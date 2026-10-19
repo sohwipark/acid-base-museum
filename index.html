@@ -1,0 +1,1334 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="description" content="아레니우스, 브뢴스테드-로우리, 루이스 세 전시관과 반응식 서바이벌 게임장으로 이어지는 3D 화학 박물관"><style>:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style></head><body>
+<title>산과 염기 박물관</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-bleed WebGL museum of four rooms in a row; HUD pinned to corners; right drawer (bottom sheet on phones) for reading/editing panels; modal cards for the games.
+   Single dark look by choice: a night-lit museum. Each hall carries its own indicator color (acid red, base blue, Lewis violet, game gold). */
+:root {
+  --ink: #0f1117;
+  --panel: rgba(16, 19, 27, 0.96);
+  --field: #1a1f2b;
+  --paper: #eef0f4;
+  --muted: #9aa2b3;
+  --line: rgba(238, 240, 244, 0.14);
+  --acid: #ef6b5b;
+  --base: #58a6ec;
+  --lewis: #b48cf0;
+  --gold: #f2b544;
+  --hall: #ef6b5b;
+  --danger: #e2735d;
+  --good: #5fd39a;
+  --sans: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--ink); color: var(--paper); font-family: var(--sans); overflow: hidden; }
+#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
+#scene.dragging { cursor: grabbing; }
+#scene.pointing { cursor: pointer; }
+
+.hud { position: fixed; z-index: 5; }
+.brand { top: calc(16px + env(safe-area-inset-top, 0px)); left: 16px; display: grid; gap: 10px; justify-items: start; max-width: calc(100% - 130px); }
+.brand .name { pointer-events: none; }
+.brand b { display: block; font-weight: 700; font-size: 1.05rem; }
+.brand .hallname { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--paper); }
+.brand .hallname i { width: 9px; height: 9px; border-radius: 50%; background: var(--hall); flex: none; }
+.brand .hallname span { color: var(--muted); }
+.mapbox { top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; display: grid; gap: 6px; justify-items: end; pointer-events: none; }
+#minimap { width: 64px; height: 196px; border: 1px solid var(--line); background: rgba(15,17,23,0.72); border-radius: 4px; }
+.hints { left: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 0.75rem; color: var(--muted); max-width: calc(100% - 32px); pointer-events: none; }
+.hints kbd, .k { font-family: var(--mono); font-size: 0.68rem; border: 1px solid var(--line); border-radius: 3px; padding: 1px 5px; color: var(--paper); }
+
+.chip-btn { font: inherit; font-size: 0.8rem; font-weight: 600; color: var(--paper); background: rgba(15,17,23,0.8); border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; }
+.chip-btn:hover { border-color: var(--paper); }
+.chip-btn.on { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.chip-btn .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+#notice { left: 50%; transform: translateX(-50%); bottom: calc(56px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; max-width: min(460px, calc(100% - 32px)); text-align: center; pointer-events: none; line-height: 1.6; }
+#notice b { color: var(--hall); }
+#tip { position: fixed; z-index: 6; pointer-events: none; padding: 6px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 3px; font-size: 0.8rem; white-space: nowrap; transform: translate(14px, 14px); }
+#tip small { display: block; color: var(--hall); font-family: var(--mono); font-size: 0.66rem; }
+#toast { position: fixed; z-index: 30; left: 50%; top: calc(18px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); background: var(--panel); border: 1px solid var(--hall); padding: 10px 16px; border-radius: 4px; font-size: 0.85rem; max-width: calc(100% - 32px); text-align: center; }
+
+#roleCard { left: 50%; transform: translateX(-50%); bottom: calc(70px + env(safe-area-inset-bottom, 0px)); width: min(420px, calc(100% - 32px)); background: var(--panel); border: 2px solid var(--base); border-radius: 10px; padding: 18px 20px; display: grid; gap: 8px; text-align: center; }
+#roleCard .who { font-size: 0.75rem; font-family: var(--mono); letter-spacing: 0.1em; color: var(--muted); }
+#roleCard h2 { margin: 0; font-size: 1.8rem; letter-spacing: -0.02em; }
+#roleCard p { margin: 0; font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+#gameHud { left: 50%; transform: translateX(-50%); top: calc(16px + env(safe-area-inset-top, 0px)); background: var(--panel); border: 1px solid var(--gold); border-radius: 8px; padding: 8px 16px; display: flex; gap: 16px; align-items: baseline; font-size: 0.85rem; }
+#gameHud b { font-family: var(--mono); font-size: 1.3rem; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* Intro */
+#intro { position: fixed; inset: 0; z-index: 20; display: grid; align-items: end; padding: 24px 16px calc(32px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(180deg, rgba(15,17,23,0.15) 0%, rgba(15,17,23,0.6) 45%, rgba(15,17,23,0.97) 100%); }
+#intro .card { max-width: 600px; display: grid; gap: 18px; padding-left: clamp(0px, 4vw, 48px); padding-bottom: clamp(0px, 4vh, 40px); }
+.eyebrow { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.14em; color: var(--gold); }
+#intro h1 { margin: 0; font-weight: 700; font-size: clamp(2.5rem, 8vw, 4.2rem); line-height: 1.05; letter-spacing: -0.03em; text-wrap: balance; }
+#intro h1 span { display: block; font-size: 0.42em; letter-spacing: 0; font-weight: 500; color: var(--muted); margin-top: 10px; }
+#intro p { margin: 0; color: var(--muted); line-height: 1.7; max-width: 48ch; }
+.route { display: flex; flex-wrap: wrap; gap: 6px; font-size: 0.78rem; }
+.route span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; display: inline-flex; gap: 6px; align-items: center; }
+.route i { width: 8px; height: 8px; border-radius: 50%; }
+#intro ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 0.85rem; }
+#intro li { display: flex; gap: 10px; }
+#intro li span:first-child { min-width: 9.5em; }
+#intro li span:last-child { color: var(--muted); }
+#editorNote { font-size: 0.8rem; color: var(--gold); }
+.btn { font: inherit; font-weight: 600; color: var(--ink); background: var(--gold); border: 0; border-radius: 4px; padding: 11px 20px; cursor: pointer; }
+.btn:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: 0.4; cursor: default; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* Drawer */
+#drawer { position: fixed; z-index: 10; top: 0; right: 0; bottom: 0; width: min(430px, 100%); background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; padding: calc(26px + env(safe-area-inset-top, 0px)) 26px calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(100%); transition: transform 0.4s cubic-bezier(.2,.7,.2,1); }
+#drawer.open { transform: none; }
+#drawer > section { display: flex; flex-direction: column; gap: 14px; }
+#closeBtn { position: absolute; z-index: 2; top: calc(14px + env(safe-area-inset-top, 0px)); right: 14px; width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); color: var(--paper); cursor: pointer; }
+.kicker { margin: 0; font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; color: var(--hall); padding-right: 44px; }
+#dTitle { margin: 0; font-weight: 700; font-size: 1.6rem; line-height: 1.25; letter-spacing: -0.02em; text-wrap: balance; padding-right: 30px; }
+#dBody { white-space: pre-line; line-height: 1.85; font-size: 0.93rem; color: #d7dbe3; overflow-wrap: anywhere; }
+.exbox { border: 1px dashed var(--hall); border-radius: 6px; padding: 12px 14px; display: grid; gap: 8px; }
+.exbox > span { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; color: var(--hall); }
+.exbox .eq { font-size: 1.05rem; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.exbox .empty { font-size: 0.85rem; color: var(--muted); }
+.hint { margin: 0; font-size: 0.76rem; color: var(--muted); line-height: 1.6; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ghost { font: inherit; font-size: 0.82rem; color: var(--paper); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; cursor: pointer; }
+.ghost:hover { border-color: var(--paper); }
+.ghost.accent { border-color: var(--gold); color: var(--gold); }
+.ghost.danger { border-color: var(--danger); color: var(--danger); }
+
+.form { display: grid; gap: 14px; }
+.field { display: grid; gap: 5px; min-width: 0; }
+.field label { font-size: 0.75rem; color: var(--muted); }
+.field input, .field textarea { font: inherit; font-size: 0.9rem; color: var(--paper); background: var(--field); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 100%; box-sizing: border-box; }
+.field textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
+.field small { font-size: 0.7rem; color: var(--muted); line-height: 1.5; }
+.symbols { display: flex; flex-wrap: wrap; gap: 5px; }
+.symbols button { font: inherit; font-size: 0.85rem; min-width: 34px; color: var(--paper); background: var(--field); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+.symbols button:hover { border-color: var(--gold); }
+#saveState { font-family: var(--mono); font-size: 0.7rem; color: var(--muted); }
+#saveState.err { color: var(--danger); }
+
+/* Modals */
+.modal { position: fixed; inset: 0; z-index: 25; display: grid; place-items: center; background: rgba(8,10,14,0.72); padding: 16px; overflow-y: auto; }
+.mcard { width: min(620px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 24px; display: grid; gap: 14px; }
+.mcard.wide { width: min(860px, 100%); }
+.mcard h2 { margin: 0; font-size: 1.6rem; letter-spacing: -0.02em; text-wrap: balance; }
+.mcard h3 { margin: 4px 0 0; font-size: 0.72rem; font-family: var(--mono); letter-spacing: 0.1em; color: var(--muted); font-weight: 500; }
+.mcard p { margin: 0; line-height: 1.7; color: #d7dbe3; font-size: 0.92rem; }
+.rules { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; font-size: 0.88rem; line-height: 1.65; color: #d7dbe3; }
+.rules b { color: var(--paper); }
+#mgCanvas { width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; border: 1px solid var(--line); background: #141925; touch-action: none; display: block; }
+.mgbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; }
+
+.bhead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+#bLives { color: var(--acid); font-size: 1.05rem; letter-spacing: 2px; }
+#bTime { color: var(--gold); font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.tbar { height: 4px; background: var(--field); border-radius: 2px; overflow: hidden; }
+.tbar i { display: block; height: 100%; background: var(--gold); width: 100%; }
+.slots { min-height: 64px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 10px; border: 1px dashed var(--gold); border-radius: 8px; background: rgba(242,181,68,0.05); }
+.slots .empty { color: var(--muted); font-size: 0.85rem; }
+.tok { font: inherit; font-weight: 600; font-size: 1.05rem; min-width: 44px; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); cursor: pointer; display: inline-flex; gap: 6px; align-items: baseline; }
+.tok.op { background: var(--gold); border-color: var(--gold); }
+.tok.plus { background: #c9ced8; }
+.tok small { font-family: var(--mono); font-size: 0.7rem; color: #4d5361; font-weight: 500; }
+.tok:disabled { opacity: 0.3; cursor: default; }
+.inv { display: flex; flex-wrap: wrap; gap: 6px; }
+#bMsg { min-height: 1.5em; font-weight: 600; }
+#bMsg.good { color: var(--good); }
+#bMsg.bad { color: var(--danger); }
+.shake { animation: shake 0.35s; }
+@keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.donelist { margin: 0; padding-left: 1.2em; display: grid; gap: 4px; font-size: 0.9rem; }
+
+@media (max-width: 720px) {
+  #drawer { top: auto; width: 100%; max-height: 64%; border-left: 0; border-top: 1px solid var(--line); border-radius: 12px 12px 0 0; padding: 22px 18px calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateY(100%); }
+  #minimap { width: 50px; height: 152px; }
+  .hints .desk { display: none; }
+  .mcard { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { #drawer { transition: none; } .shake { animation: none; } }
+</style>
+
+<canvas id="scene" tabindex="0" aria-label="3D 산과 염기 박물관. 드래그로 둘러보고 전시물을 클릭하세요."></canvas>
+
+<div class="hud brand">
+  <div class="name"><b>산과 염기 박물관</b><div class="hallname"><i></i><b id="hudHall" style="font-size:.82rem">제1전시관</b><span id="hudSub">아레니우스의 산과 염기</span></div></div>
+  <button class="chip-btn" id="editToggle" hidden><span class="dot"></span><span id="editLabel">편집 모드</span></button>
+</div>
+<div class="hud mapbox"><canvas id="minimap" width="64" height="196" aria-hidden="true"></canvas></div>
+<div class="hud hints" id="hints">
+  <span>드래그: 둘러보기</span>
+  <span>바닥 클릭: 걸어가기</span>
+  <span class="desk"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 이동 · <kbd>Shift</kbd> 달리기</span>
+  <span>전시물 클릭: 자세히 보기</span>
+</div>
+<div class="hud" id="notice" hidden></div>
+<div class="hud" id="roleCard" hidden>
+  <span class="who">발판 인식 완료</span>
+  <h2 id="roleTitle">당신은 산입니다</h2>
+  <p id="roleText"></p>
+  <div class="actions" style="justify-content:center"><button class="btn" id="roleStart">양성자 캐치볼 체험하기</button></div>
+</div>
+<div class="hud" id="gameHud" hidden><span>수집 시간</span><b id="ghTime">60</b><span>모은 구성 요소 <b id="ghCount" style="font-size:1rem">0</b>개</span></div>
+<div id="tip" hidden></div>
+<div id="toast" hidden></div>
+
+<section id="intro">
+  <div class="card">
+    <span class="eyebrow">화학 박물관 · 특별전</span>
+    <h1>산과 염기 박물관<span>세 가지 정의를 따라 걷는 전시</span></h1>
+    <p>산과 염기의 정의는 아레니우스에서 브뢴스테드-로우리, 루이스로 오며 점점 넓어졌습니다. 세 전시관을 차례로 지나며 직접 반응을 일으켜 보고, 마지막 게임장에서 반응식을 완성해 보세요.</p>
+    <div class="route">
+      <span><i style="background:var(--acid)"></i>제1전시관 아레니우스</span>
+      <span><i style="background:var(--base)"></i>제2전시관 브뢴스테드-로우리</span>
+      <span><i style="background:var(--lewis)"></i>제3전시관 루이스</span>
+      <span><i style="background:var(--gold)"></i>종합 게임장</span>
+    </div>
+    <ul>
+      <li><span>마우스·손가락 드래그</span><span>시야 돌리기</span></li>
+      <li><span>바닥 클릭 / WASD</span><span>이동 (문을 지나 다음 전시관으로)</span></li>
+      <li><span>전시물 클릭</span><span>해설 읽기, 반응물 집기, 수조에 넣기</span></li>
+    </ul>
+    <span id="editorNote" hidden>편집 권한이 있습니다. 입장 후 왼쪽 위 ‘편집 모드’를 켜고 해설판을 클릭하면 정의, 한계점, 예시 반응을 바꿀 수 있습니다.</span>
+    <div><button class="btn" id="enterBtn">관람 시작</button></div>
+  </div>
+</section>
+
+<aside id="drawer" hidden>
+  <button id="closeBtn" aria-label="닫기">✕</button>
+  <section id="viewPane">
+    <p class="kicker" id="dKicker"></p>
+    <h2 id="dTitle"></h2>
+    <div id="dBody"></div>
+    <div class="exbox" id="dEx"><span>예시 반응</span><div id="dExList"></div></div>
+    <div class="actions" id="dActions"></div>
+  </section>
+  <section id="editPane" hidden></section>
+</aside>
+
+<!-- Hall 2 mini game -->
+<section class="modal" id="mg" hidden>
+  <div class="mcard wide">
+    <div class="mgbar"><h2>양성자 캐치볼</h2><button class="ghost" id="mgClose">닫고 전시관으로</button></div>
+    <div id="mgRules">
+      <ol class="rules">
+        <li><b>산 차례</b>: 화면(또는 <span class="k">Space</span>)을 누르고 있으면 힘이 모이고, 떼면 양성자(H⁺)가 날아갑니다. 상대 머리 위 바구니에 넣으세요.</li>
+        <li><b>염기 차례</b>: 마우스나 손가락, <span class="k">←</span><span class="k">→</span>로 머리 위 바구니를 움직여 날아오는 양성자를 받으세요.</li>
+        <li><b>‘역반응입니다!’</b>가 뜨면 역할이 바뀝니다. 양성자를 받은 쪽은 짝산이 되어 던지고, 내준 쪽은 짝염기가 되어 받습니다.</li>
+        <li>제한 시간은 45초입니다. 원래는 2인용 게임이라, 지금은 컴퓨터가 상대 역할을 맡습니다.</li>
+      </ol>
+    </div>
+    <canvas id="mgCanvas" width="800" height="450"></canvas>
+    <div class="mgbar"><p id="mgStatus" class="hint">준비되면 시작을 누르세요.</p><button class="btn" id="mgStart">시작</button></div>
+  </div>
+</section>
+
+<!-- Final room -->
+<section class="modal" id="gIntro" hidden>
+  <div class="mcard">
+    <span class="eyebrow">종합 게임장</span>
+    <h2>반응식 서바이벌</h2>
+    <ol class="rules">
+      <li><b>1단계 · 수집 60초</b>: 게임장 곳곳에 떠 있는 반응식 구성 요소(HCl, H₂O, H⁺, Cl⁻, +, →, ⇆ …)에 다가가면 저절로 모입니다.</li>
+      <li><b>2단계 · 서바이벌</b>: ‘아레니우스 반응을 만드세요’처럼 문제가 나오면, 모은 구성 요소를 눌러 반응식을 완성하고 제출합니다. 예: HCl → H⁺ + Cl⁻</li>
+      <li>브뢴스테드-로우리 반응에는 가역 화살표 <b>⇆</b>, 아레니우스와 루이스 반응에는 <b>→</b>를 씁니다.</li>
+      <li>쓴 구성 요소는 사라집니다. 시간 안에 못 만들거나 포기하면 목숨이 하나 줄어듭니다.</li>
+      <li>목숨 3개를 모두 잃거나, 남은 구성 요소로 만들 수 있는 반응이 없으면 관람이 끝납니다.</li>
+    </ol>
+    <div class="actions"><button class="btn" id="gGo">수집 시작</button><button class="ghost" id="gLater">조금 둘러보고 할게요</button></div>
+  </div>
+</section>
+
+<section class="modal" id="builder" hidden>
+  <div class="mcard wide" id="bCard">
+    <div class="bhead"><span id="bRound">1라운드 · 완성 0개</span><span id="bLives">♥♥♥</span><span id="bTime">0:40</span></div>
+    <div class="tbar"><i id="bBar"></i></div>
+    <h2 id="bPrompt">아레니우스 반응을 만드세요</h2>
+    <p class="hint" id="bHelp"></p>
+    <div class="slots" id="bSlots"></div>
+    <div class="actions"><button class="ghost" id="bClear">지우기</button><button class="ghost" id="bHint">힌트</button><button class="ghost danger" id="bGive">포기 (♥ −1)</button><button class="btn" id="bSubmit">제출</button></div>
+    <p id="bMsg"></p>
+    <h3>내 구성 요소 · 눌러서 반응식에 넣기</h3>
+    <div class="inv" id="bInv"></div>
+  </div>
+</section>
+
+<section class="modal" id="ending" hidden>
+  <div class="mcard">
+    <span class="eyebrow">관람 종료</span>
+    <h2 id="eTitle">박물관 관람이 끝났습니다</h2>
+    <p id="eText"></p>
+    <ol class="donelist" id="eList"></ol>
+    <p>아레니우스의 ‘물속 이온’에서 브뢴스테드-로우리의 ‘양성자 주고받기’, 루이스의 ‘전자쌍 주고받기’까지, 산과 염기의 정의가 넓어지는 길을 함께 걸어 주셔서 감사합니다.</p>
+    <div class="actions"><button class="btn" id="eRetry">게임 다시 하기</button><button class="ghost" id="eHome">처음 전시관으로</button></div>
+  </div>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function () {
+"use strict";
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rnd = (a, b) => a + Math.random() * (b - a);
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ================= Layout ================= */
+const W = 14, D = 14, H = 4.6, N = 4, DOOR = 2.4;
+const HALLS = [
+  { name: "제1전시관", sub: "아레니우스의 산과 염기", color: "#ef6b5b" },
+  { name: "제2전시관", sub: "브뢴스테드-로우리의 산과 염기", color: "#58a6ec" },
+  { name: "제3전시관", sub: "루이스의 산과 염기", color: "#b48cf0" },
+  { name: "종합 게임장", sub: "반응식 서바이벌", color: "#f2b544" }
+];
+const zc = i => -(i + 0.5) * D;
+const hallAt = z => clamp(Math.floor(-z / D), 0, N - 1);
+
+/* ================= Panels (editable text) ================= */
+const PANELS = {
+  a_def: { hall: 0, ex: true, x: -W / 2, z: -4.2, kicker: "제1전시관 · 정의", title: "아레니우스의 산과 염기",
+    body: "산: 물에 녹아 수소 이온(H⁺)을 내놓는 물질\n염기: 물에 녹아 수산화 이온(OH⁻)을 내놓는 물질\n\n1884년 스웨덴의 화학자 아레니우스가 전해질의 이온화 이론을 바탕으로 제안했습니다. 산과 염기가 만나면 H⁺와 OH⁻가 결합해 물이 생기는 중화 반응이 일어납니다." },
+  a_lab: { hall: 0, ex: false, x: -W / 2, z: -10.2, kicker: "제1전시관 · 체험 코너", title: "이온화 반응 체험",
+    body: "1. 가운데 선반의 반응물 덩어리를 클릭해 집으세요.\n2. 오른쪽 수조를 클릭하면 덩어리가 물에 들어갑니다.\n3. 물속에서 이온으로 나뉘는 모습과 반응식을 확인하세요.\n4. 산과 염기를 함께 넣으면 H⁺와 OH⁻가 만나 물이 되는 중화 반응이 일어납니다.\n5. NH₃도 넣어 보세요. 무슨 일이 일어날까요?" },
+  a_lim: { hall: 0, ex: true, x: W / 2, z: -10.6, kicker: "제1전시관 · 한계점", title: "아레니우스 정의의 한계",
+    body: "• 물에 녹은 수용액에서만 산과 염기를 정의할 수 있습니다.\n• NH₃처럼 OH⁻를 가지고 있지 않은데도 염기성을 띠는 물질을 설명하지 못합니다.\n• H⁺는 물속에서 홀로 있지 않고 물 분자와 결합한 H₃O⁺로 존재합니다." },
+  b_def: { hall: 1, ex: true, x: -W / 2, z: -17.6, kicker: "제2전시관 · 정의", title: "브뢴스테드-로우리의 산과 염기",
+    body: "산: 양성자(H⁺)를 내주는 물질, 양성자 주개\n염기: 양성자(H⁺)를 받는 물질, 양성자 받개\n\n1923년 브뢴스테드와 로우리가 각각 제안했습니다. 양성자를 주고받는 관계로 정의하므로 물이 없어도 적용할 수 있습니다. 역반응까지 생각하면 짝산과 짝염기가 생깁니다." },
+  b_game: { hall: 1, ex: false, x: W / 2, z: -17.6, kicker: "제2전시관 · 체험 게임", title: "양성자 캐치볼 게임 방법",
+    body: "준비: 두 사람이 각각 ‘산 자리’와 ‘염기 자리’ 발판에 올라섭니다. 화면에 ‘당신은 산입니다’, ‘당신은 염기입니다’가 뜹니다.\n\n산: 양성자(H⁺) 공을 받아 상대에게 던집니다.\n염기: 머리 위에 바구니를 들고 움직이며 날아오는 양성자를 바구니에 받습니다.\n\n역반응: ‘역반응입니다!’가 무작위 시각에 뜨면 역할이 바뀝니다. 양성자를 받은 쪽은 짝산이 되어 던지고, 내준 쪽은 짝염기가 되어 받습니다.\n\n점수: 바구니에 들어간 양성자 1개당 1점, 두 사람의 점수를 합쳐 팀 점수가 됩니다. 1인 관람에서는 컴퓨터가 상대를 맡습니다." },
+  b_lim: { hall: 1, ex: true, x: W / 2, z: -24.8, kicker: "제2전시관 · 한계점", title: "브뢴스테드-로우리 정의의 한계",
+    body: "• 양성자(H⁺)를 주고받지 않는 반응은 산-염기 반응으로 설명하지 못합니다.\n• BF₃, AlCl₃처럼 내줄 수소가 없는데도 산의 성질을 보이는 물질을 설명하지 못합니다." },
+  l_def: { hall: 2, ex: true, x: -W / 2, z: -31.6, kicker: "제3전시관 · 정의", title: "루이스의 산과 염기",
+    body: "산: 비공유 전자쌍을 받는 물질, 전자쌍 받개\n염기: 비공유 전자쌍을 내주는 물질, 전자쌍 주개\n\n1923년 루이스가 제안했습니다. 양성자 대신 전자쌍에 주목하므로 수소가 없는 물질의 반응까지 산-염기 반응으로 설명할 수 있는, 가장 넓은 정의입니다." },
+  l_cmp: { hall: 2, ex: false, x: W / 2, z: -31.6, kicker: "제3전시관 · 정리", title: "세 정의 한눈에 보기",
+    body: "아레니우스\n산: H⁺를 내놓음 / 염기: OH⁻를 내놓음 / 수용액에서만\n\n브뢴스테드-로우리\n산: H⁺를 줌 / 염기: H⁺를 받음 / 짝산·짝염기\n\n루이스\n산: 전자쌍을 받음 / 염기: 전자쌍을 줌 / 가장 넓은 정의\n\n세 정의는 서로를 버리는 관계가 아니라, 앞의 정의를 감싸며 넓어지는 관계입니다." },
+  g_rule: { hall: 3, ex: false, x: -W / 2, z: -45.2, kicker: "종합 게임장 · 게임 방법", title: "반응식 서바이벌",
+    body: "1단계 · 수집 60초: 떠 있는 구성 요소에 다가가면 모입니다.\n\n2단계 · 서바이벌: 문제로 나온 정의에 맞는 반응식을 모은 구성 요소로 완성하세요.\n예: HCl → H⁺ + Cl⁻\n\n• 브뢴스테드-로우리 반응은 ⇆를 씁니다.\n• 쓴 구성 요소는 사라집니다.\n• 시간 초과나 포기는 목숨 −1.\n\n가운데 게임 시작대를 클릭해 시작하세요." }
+};
+const pdata = {};
+Object.keys(PANELS).forEach(k => { pdata[k] = { title: PANELS[k].title, body: PANELS[k].body, examples: "" }; });
+
+/* ================= Renderer ================= */
+const canvas = $("scene");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#0c0e14");
+scene.fog = new THREE.Fog("#0c0e14", 16, 34);
+const camera = new THREE.PerspectiveCamera(66, 1, 0.05, 80);
+camera.rotation.order = "YXZ";
+scene.add(camera);
+const maxAniso = renderer.capabilities.getMaxAnisotropy();
+
+function canvasTex(w, h, draw) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = maxAniso;
+  return t;
+}
+function wrapText(c, text, x, y, maxW, lh, maxLines) {
+  const out = [];
+  String(text).split("\n").forEach(para => {
+    let line = "";
+    for (const wd of para.split(" ")) {
+      const test = line ? line + " " + wd : wd;
+      if (c.measureText(test).width > maxW && line) { out.push(line); line = wd; } else line = test;
+      while (c.measureText(line).width > maxW && line.length > 1) {
+        let cut = line.length - 1; while (cut > 1 && c.measureText(line.slice(0, cut)).width > maxW) cut--;
+        out.push(line.slice(0, cut)); line = line.slice(cut);
+      }
+    }
+    out.push(line);
+  });
+  const lines = maxLines ? out.slice(0, Math.max(0, maxLines)) : out;
+  if (maxLines && out.length > maxLines && lines.length) lines[lines.length - 1] = lines[lines.length - 1].replace(/.{0,2}$/, "…");
+  lines.forEach((l, i) => c.fillText(l, x, y + i * lh));
+  return y + lines.length * lh;
+}
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+const FONT = '"IBM Plex Sans KR", "Malgun Gothic", sans-serif', MONO = '"IBM Plex Mono", monospace';
+
+const LABELS = {};
+function labelMat(text, color) {
+  const key = text + "|" + color;
+  if (LABELS[key]) return LABELS[key];
+  const tex = canvasTex(320, 112, (c, w, h) => {
+    c.font = `600 60px ${FONT}`;
+    const tw = Math.min(w - 8, c.measureText(text).width + 44);
+    c.fillStyle = "rgba(14,16,22,0.88)"; roundRect(c, (w - tw) / 2, 10, tw, h - 20, 26); c.fill();
+    c.strokeStyle = color; c.lineWidth = 4; roundRect(c, (w - tw) / 2, 10, tw, h - 20, 26); c.stroke();
+    c.fillStyle = "#ffffff"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(text, w / 2, h / 2 + 3, w - 40);
+  });
+  return (LABELS[key] = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+}
+function makeLabel(text, color, h) { const s = new THREE.Sprite(labelMat(text, color)); s.scale.set(h * 320 / 112, h, 1); s.renderOrder = 5; return s; }
+
+/* ================= Rooms ================= */
+const fixedPicks = [];
+const boxes = [];   // AABB colliders
+let floorMesh;
+function floorTex() {
+  const t = canvasTex(1024, 1024, (c, w, h) => {
+    c.fillStyle = "#2a2d36"; c.fillRect(0, 0, w, h);
+    for (let i = 0; i < 12000; i++) { c.fillStyle = `hsla(${225 + Math.random() * 20}, 8%, ${20 + Math.random() * 40}%, ${0.25 + Math.random() * 0.4})`; const s = 1 + Math.random() * 3; c.fillRect(Math.random() * w, Math.random() * h, s, s); }
+    c.strokeStyle = "rgba(10,12,16,0.8)"; c.lineWidth = 3;
+    for (let i = 0; i <= 4; i++) { c.beginPath(); c.moveTo(i * w / 4, 0); c.lineTo(i * w / 4, h); c.stroke(); c.beginPath(); c.moveTo(0, i * h / 4); c.lineTo(w, i * h / 4); c.stroke(); }
+  });
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(W / 3.5, N * D / 3.5);
+  return t;
+}
+function signTex(top, main, color, w, h) {
+  return canvasTex(w, h, (c) => {
+    c.fillStyle = "#12151d"; c.fillRect(0, 0, w, h);
+    c.fillStyle = color; c.fillRect(0, 0, 14, h);
+    c.fillStyle = color; c.font = `500 ${Math.round(h * 0.2)}px ${MONO}`; c.fillText(top, 48, h * 0.36);
+    c.fillStyle = "#eef0f4"; c.font = `700 ${Math.round(h * 0.3)}px ${FONT}`; c.fillText(main, 46, h * 0.78, w - 80);
+  });
+}
+function buildRooms() {
+  floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(W, N * D), new THREE.MeshStandardMaterial({ map: floorTex(), roughness: 0.5 }));
+  floorMesh.rotation.x = -Math.PI / 2; floorMesh.position.z = -N * D / 2; floorMesh.userData.kind = "floor"; scene.add(floorMesh); fixedPicks.push(floorMesh);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, N * D), new THREE.MeshStandardMaterial({ color: "#12141a", roughness: 1 }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(0, H, -N * D / 2); scene.add(ceil);
+  const wallMat = new THREE.MeshStandardMaterial({ color: "#1f232d", roughness: 0.9, side: THREE.DoubleSide });
+  scene.add(new THREE.HemisphereLight("#e8ecf5", "#1b1e26", 0.62));
+
+  for (let i = 0; i < N; i++) {
+    const col = new THREE.Color(HALLS[i].color), cz = zc(i);
+    const stripMat = new THREE.MeshBasicMaterial({ color: col });
+    [-1, 1].forEach(s => {
+      const wall = new THREE.Mesh(new THREE.PlaneGeometry(D, H), wallMat);
+      wall.position.set(s * W / 2, H / 2, cz); wall.rotation.y = -s * Math.PI / 2; scene.add(wall); fixedPicks.push(wall);
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.1, D), stripMat); base.position.set(s * (W / 2 - 0.015), 0.05, cz); scene.add(base);
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, D), stripMat); top.position.set(s * (W / 2 - 0.015), H - 0.3, cz); scene.add(top);
+    });
+    const tint = new THREE.Color("#fff3e0").lerp(col, 0.25);
+    [-3.5, 3.5].forEach(x => { const p = new THREE.PointLight(tint, 0.6, 14, 1.4); p.position.set(x, H - 0.4, cz); scene.add(p); });
+    for (let x = -4; x <= 4; x += 4) { const s = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, D - 3), new THREE.MeshBasicMaterial({ color: "#d3d8e2" })); s.position.set(x, H - 0.02, cz); scene.add(s); }
+  }
+  // end walls
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(W, H), wallMat); front.position.set(0, H / 2, 0); front.rotation.y = Math.PI; scene.add(front); fixedPicks.push(front);
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(W, H), wallMat); back.position.set(0, H / 2, -N * D); scene.add(back); fixedPicks.push(back);
+  const entry = new THREE.Mesh(new THREE.PlaneGeometry(5, 1.25), new THREE.MeshBasicMaterial({ map: signTex("CHEMISTRY MUSEUM · 입구", "산과 염기 박물관", "#f2b544", 1200, 300) }));
+  entry.position.set(0, 2.6, -0.02); entry.rotation.y = Math.PI; scene.add(entry);
+  const endS = new THREE.Mesh(new THREE.PlaneGeometry(4, 1), new THREE.MeshBasicMaterial({ map: signTex("FINAL ROOM", "관람의 마지막 방", "#f2b544", 1200, 300) }));
+  endS.position.set(0, 3.2, -N * D + 0.02); scene.add(endS);
+
+  // partitions with doorways
+  const segW = (W - DOOR) / 2, LINT = 2.9;
+  for (let k = 1; k < N; k++) {
+    const zw = -k * D, next = HALLS[k], prev = HALLS[k - 1];
+    [-1, 1].forEach(s => { const seg = new THREE.Mesh(new THREE.BoxGeometry(segW, H, 0.2), wallMat); seg.position.set(s * (DOOR / 2 + segW / 2), H / 2, zw); scene.add(seg); fixedPicks.push(seg); });
+    const lin = new THREE.Mesh(new THREE.BoxGeometry(DOOR, H - LINT, 0.2), wallMat); lin.position.set(0, (H + LINT) / 2, zw); scene.add(lin);
+    const fm = new THREE.MeshBasicMaterial({ color: next.color });
+    [-1, 1].forEach(s => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.08, LINT, 0.26), fm); p.position.set(s * DOOR / 2, LINT / 2, zw); scene.add(p); });
+    const tb = new THREE.Mesh(new THREE.BoxGeometry(DOOR + 0.08, 0.08, 0.26), fm); tb.position.set(0, LINT, zw); scene.add(tb);
+    const fs = new THREE.Mesh(new THREE.PlaneGeometry(4.4, 1.1), new THREE.MeshBasicMaterial({ map: signTex("다음 전시 →", `${next.name} · ${next.sub}`, next.color, 1600, 400) }));
+    fs.position.set(0, 3.65, zw + 0.11); scene.add(fs);
+    const bs = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 0.9), new THREE.MeshBasicMaterial({ map: signTex("← 이전 전시", `${prev.name} · ${prev.sub}`, prev.color, 1600, 400) }));
+    bs.position.set(0, 3.65, zw - 0.11); bs.rotation.y = Math.PI; scene.add(bs);
+    // threshold stripe on the floor
+    const th = new THREE.Mesh(new THREE.PlaneGeometry(DOOR, 0.5), new THREE.MeshBasicMaterial({ color: next.color, transparent: true, opacity: 0.5 }));
+    th.rotation.x = -Math.PI / 2; th.position.set(0, 0.005, zw - 0.35); scene.add(th);
+  }
+}
+
+/* ---------- Wall panels ---------- */
+const PW = 2.5, PHt = 3.1, TW = 1000, TH = 1240;
+const panelMesh = {};
+function drawPanel(c, w, h, key) {
+  const p = PANELS[key], d = pdata[key], col = HALLS[p.hall].color;
+  c.fillStyle = "#eceef2"; c.fillRect(0, 0, w, h);
+  c.fillStyle = col; c.fillRect(0, 0, w, 18);
+  c.fillStyle = "#5b6372"; c.font = `500 30px ${MONO}`; c.fillText(p.kicker, 64, 96);
+  c.fillStyle = "#12151c"; c.font = `700 62px ${FONT}`;
+  let y = wrapText(c, d.title || "제목 없음", 62, 180, w - 124, 76, 2);
+  const exTop = p.ex ? h - 330 : h - 50;
+  c.fillStyle = "#2a2f3a"; c.font = `400 31px ${FONT}`;
+  wrapText(c, d.body, 64, y + 40, w - 128, 49, Math.floor((exTop - y - 50) / 49));
+  if (p.ex) {
+    const exs = d.examples.split("\n").map(s => s.trim()).filter(Boolean);
+    c.strokeStyle = col; c.lineWidth = 4; if (!exs.length) c.setLineDash([18, 12]);
+    roundRect(c, 56, h - 320, w - 112, 270, 18); c.stroke(); c.setLineDash([]);
+    c.fillStyle = col; c.font = `600 28px ${MONO}`; c.fillText("예시 반응", 88, h - 268);
+    if (exs.length) {
+      c.fillStyle = "#12151c"; c.font = `600 40px ${FONT}`;
+      exs.slice(0, 4).forEach((e, i) => c.fillText(e, 88, h - 206 + i * 50, w - 176));
+    } else {
+      c.fillStyle = "#8a91a0"; c.font = `500 32px ${FONT}`; c.textAlign = "center";
+      c.fillText("예시 반응이 들어갈 자리입니다", w / 2, h - 175);
+      c.font = `400 25px ${FONT}`; c.fillText("편집 모드에서 반응식을 넣을 수 있어요", w / 2, h - 128); c.textAlign = "left";
+    }
+  }
+}
+function buildPanels() {
+  const frameMat = new THREE.MeshStandardMaterial({ color: "#151821", roughness: 0.6 });
+  Object.keys(PANELS).forEach(key => {
+    const p = PANELS[key], s = p.x < 0 ? 1 : -1;
+    const g = new THREE.Group(); g.position.set(p.x + s * 0.05, 2.05, p.z); g.rotation.y = s * Math.PI / 2;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(PW + 0.08, PHt + 0.08, 0.04), frameMat); g.add(frame);
+    const tex = canvasTex(TW, TH, (c, w, h) => drawPanel(c, w, h, key));
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(PW, PHt), new THREE.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: new THREE.Color("#ffffff"), emissiveIntensity: 0.3, roughness: 0.85 }));
+    face.position.z = 0.025; g.add(face);
+    face.userData = { kind: "panel", key }; frame.userData = { kind: "panel", key };
+    scene.add(g); fixedPicks.push(face, frame); panelMesh[key] = face;
+  });
+}
+function refreshPanel(key) {
+  const m = panelMesh[key]; if (!m) return;
+  const old = m.material.map, tex = canvasTex(TW, TH, (c, w, h) => drawPanel(c, w, h, key));
+  m.material.map = tex; m.material.emissiveMap = tex; m.material.needsUpdate = true; old.dispose();
+}
+
+/* ================= Hall 1: reaction tank ================= */
+const ION = { "H⁺": ["#ff6b6b", 0.055], "Cl⁻": ["#4fd17a", 0.1], "Br⁻": ["#c0643a", 0.11], "NO₃⁻": ["#7b93ff", 0.11], "Na⁺": ["#c6a2ff", 0.085], "K⁺": ["#f0a6e8", 0.1], "Ca²⁺": ["#e8dfc0", 0.1], "OH⁻": ["#4aa3ff", 0.08], "H₂O": ["#bfe6ff", 0.08], "NH₃": ["#6fe0c0", 0.1] };
+const COMPS = [
+  { f: "HCl", kind: "acid", parts: ["H⁺", "Cl⁻"], eq: "HCl → H⁺ + Cl⁻" },
+  { f: "HBr", kind: "acid", parts: ["H⁺", "Br⁻"], eq: "HBr → H⁺ + Br⁻" },
+  { f: "HNO₃", kind: "acid", parts: ["H⁺", "NO₃⁻"], eq: "HNO₃ → H⁺ + NO₃⁻" },
+  { f: "NaOH", kind: "base", parts: ["Na⁺", "OH⁻"], eq: "NaOH → Na⁺ + OH⁻" },
+  { f: "KOH", kind: "base", parts: ["K⁺", "OH⁻"], eq: "KOH → K⁺ + OH⁻" },
+  { f: "Ca(OH)₂", kind: "base", parts: ["Ca²⁺", "OH⁻", "OH⁻"], eq: "Ca(OH)₂ → Ca²⁺ + 2OH⁻" },
+  { f: "NH₃", kind: "odd", parts: ["NH₃"], eq: "NH₃ → ?" }
+];
+const KIND_COL = { acid: "#ef6b5b", base: "#58a6ec", odd: "#6fe0c0" };
+const ionGeo = {}, ionMat = {};
+function ionMesh(sp) {
+  const [col, r] = ION[sp];
+  ionGeo[sp] = ionGeo[sp] || new THREE.SphereGeometry(r, 24, 16);
+  ionMat[sp] = ionMat[sp] || new THREE.MeshStandardMaterial({ color: col, emissive: new THREE.Color(col), emissiveIntensity: 0.35, roughness: 0.35 });
+  return new THREE.Mesh(ionGeo[sp], ionMat[sp]);
+}
+function makeCluster(comp) {
+  const g = new THREE.Group(), n = comp.parts.length;
+  comp.parts.forEach((sp, i) => {
+    const m = ionMesh(sp);
+    if (n === 2) m.position.x = (i ? 1 : -1) * ION[sp][1] * 0.75;
+    if (n === 3) { const a = i / 3 * Math.PI * 2; m.position.set(Math.cos(a) * 0.075, Math.sin(a) * 0.075, 0); }
+    g.add(m);
+  });
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(0.18, 28, 18), new THREE.MeshPhysicalMaterial({ color: KIND_COL[comp.kind], transparent: true, opacity: 0.28, roughness: 0.1, clearcoat: 1, depthWrite: false }));
+  g.add(shell);
+  return { g, shell };
+}
+
+const TABLE = { x: -3.4, z: -7.4 }, TANK = { x: 2.6, z: -6.6 };
+const orbs = [];
+let held = null, heldGroup = null;
+let tankGroup, waterMat, boardMesh;
+const ions = [], falling = [];
+const tank = { eq: "반응물을 넣어 보세요", msg: "선반에서 덩어리를 집어 이 수조를 클릭하면 물속에서 이온으로 나뉩니다.", merging: null };
+
+function buildHall1() {
+  const tabMat = new THREE.MeshStandardMaterial({ color: "#d9dde4", roughness: 0.7 });
+  const table = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.9, 2.9), tabMat); table.position.set(TABLE.x, 0.45, TABLE.z); scene.add(table);
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.03, 2.94), new THREE.MeshStandardMaterial({ color: "#2b303b" })); top.position.set(TABLE.x, 0.915, TABLE.z); scene.add(top);
+  table.userData = top.userData = { kind: "table" }; fixedPicks.push(table, top);
+  boxes.push({ x0: TABLE.x - 0.5, x1: TABLE.x + 0.5, z0: TABLE.z - 1.45, z1: TABLE.z + 1.45 });
+  const sign = makeLabel("반응물 선반 · 클릭해서 집기", "#ef6b5b", 0.2); sign.position.set(TABLE.x, 1.75, TABLE.z); scene.add(sign);
+  COMPS.forEach((comp, i) => {
+    const { g, shell } = makeCluster(comp);
+    const home = new THREE.Vector3(TABLE.x, 1.11, TABLE.z - 1.2 + i * 0.4);
+    g.position.copy(home); scene.add(g);
+    const lab = makeLabel(comp.f, KIND_COL[comp.kind], 0.11); lab.position.set(home.x, home.y + 0.3, home.z); scene.add(lab);
+    shell.userData = { kind: "orb", i };
+    orbs.push({ comp, g, shell, home, lab, avail: true, back: 0 });
+    fixedPicks.push(shell);
+  });
+
+  tankGroup = new THREE.Group(); tankGroup.position.set(TANK.x, 0, TANK.z); scene.add(tankGroup);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.6, 1.3), new THREE.MeshStandardMaterial({ color: "#20242e", roughness: 0.6, metalness: 0.2 }));
+  base.position.y = 0.3; tankGroup.add(base);
+  const glass = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.95, 1.1), new THREE.MeshPhysicalMaterial({ color: "#ffffff", transparent: true, opacity: 0.16, roughness: 0.05, clearcoat: 1, depthWrite: false, side: THREE.DoubleSide }));
+  glass.position.y = 0.6 + 0.475; glass.renderOrder = 2; tankGroup.add(glass);
+  waterMat = new THREE.MeshPhysicalMaterial({ color: "#bfe3ff", transparent: true, opacity: 0.33, roughness: 0.1, depthWrite: false });
+  const water = new THREE.Mesh(new THREE.BoxGeometry(2.12, 0.75, 1.04), waterMat); water.position.y = 0.62 + 0.375; water.renderOrder = 1; tankGroup.add(water);
+  const reset = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.2, 0.04), new THREE.MeshStandardMaterial({ color: "#e2735d", emissive: new THREE.Color("#e2735d"), emissiveIntensity: 0.4 }));
+  reset.position.set(0.75, 0.3, 0.67); tankGroup.add(reset);
+  const rl = makeLabel("수조 비우기", "#e2735d", 0.09); rl.position.set(0.75, 0.52, 0.72); tankGroup.add(rl);
+  reset.userData = { kind: "tankReset" }; glass.userData = water.userData = base.userData = { kind: "tank" };
+  fixedPicks.push(reset, glass, base);
+  boxes.push({ x0: TANK.x - 1.2, x1: TANK.x + 1.2, z0: TANK.z - 0.65, z1: TANK.z + 0.65 });
+  // board
+  const poleMat = new THREE.MeshStandardMaterial({ color: "#151821" });
+  [-1.1, 1.1].forEach(x => { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 2.9, 0.05), poleMat); p.position.set(x, 1.45, -0.78); tankGroup.add(p); });
+  boardMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: canvasTex(1024, 512, drawBoard) }));
+  boardMesh.position.set(0, 2.3, -0.75); boardMesh.userData = { kind: "tank" }; tankGroup.add(boardMesh); fixedPicks.push(boardMesh);
+}
+function counts() { const c = {}; ions.forEach(o => { c[o.sp] = (c[o.sp] || 0) + 1; }); return c; }
+function drawBoard(c, w, h) {
+  const n = counts(), hp = n["H⁺"] || 0, oh = n["OH⁻"] || 0;
+  c.fillStyle = "#12151d"; c.fillRect(0, 0, w, h);
+  c.fillStyle = "#ef6b5b"; c.fillRect(0, 0, w, 10);
+  c.fillStyle = "#ef6b5b"; c.font = `500 28px ${MONO}`; c.fillText("반응 수조 · 지금 일어난 반응", 40, 62);
+  c.fillStyle = "#ffffff"; c.font = `700 70px ${FONT}`; c.fillText(tank.eq, 40, 160, w - 80);
+  c.fillStyle = "#b7becc"; c.font = `400 30px ${FONT}`; wrapText(c, tank.msg, 40, 225, w - 80, 44, 4);
+  const liq = hp > oh ? ["산성", "#ef6b5b"] : oh > hp ? ["염기성", "#58a6ec"] : ["중성", "#bfe6ff"];
+  const chips = [["H⁺", hp, "#ff6b6b"], ["OH⁻", oh, "#4aa3ff"], ["H₂O", n["H₂O"] || 0, "#bfe6ff"]];
+  c.font = `600 32px ${FONT}`;
+  chips.forEach(([t, v, col], i) => { c.fillStyle = col; c.fillText(`${t} ${v}개`, 40 + i * 200, 470); });
+  c.fillStyle = liq[1]; c.fillText(`액성: ${liq[0]}`, 680, 470);
+}
+function refreshBoard() { const old = boardMesh.material.map; boardMesh.material.map = canvasTex(1024, 512, drawBoard); boardMesh.material.needsUpdate = true; old.dispose(); }
+
+function spawnIon(sp, pos) {
+  const g = new THREE.Group(); g.add(ionMesh(sp));
+  const lab = makeLabel(sp, ION[sp][0], 0.1); lab.position.y = ION[sp][1] + 0.08; g.add(lab);
+  g.position.copy(pos); tankGroup.add(g);
+  const o = { sp, g, v: new THREE.Vector3(rnd(-0.35, 0.35), rnd(-0.1, 0.15), rnd(-0.25, 0.25)), age: 0 };
+  ions.push(o); return o;
+}
+function removeIon(o) { tankGroup.remove(o.g); const i = ions.indexOf(o); if (i >= 0) ions.splice(i, 1); }
+function pickOrb(i) {
+  const o = orbs[i];
+  if (!o.avail) return;
+  if (held !== null) putBack();
+  if (camera.position.distanceTo(o.home) > 5) { toast("조금 더 가까이 가서 집어 주세요."); return; }
+  o.avail = false; o.g.visible = false; o.lab.visible = false;
+  held = i;
+  const { g } = makeCluster(o.comp); g.scale.setScalar(0.65); g.position.set(0.24, -0.2, -0.55);
+  heldGroup = g; camera.add(g);
+  setNotice(`<b>${o.comp.f}</b>를 들었습니다. 수조를 클릭해 넣으세요. (<span class="k">E</span> 넣기 · <span class="k">Q</span> 내려놓기)`);
+}
+function clearHeld() { if (heldGroup) { camera.remove(heldGroup); heldGroup.traverse(m => { if (m.geometry && !Object.values(ionGeo).includes(m.geometry)) m.geometry.dispose(); if (m.material && !Object.values(ionMat).includes(m.material)) m.material.dispose(); }); } heldGroup = null; held = null; setNotice(""); }
+function putBack() { if (held === null) return; const o = orbs[held]; o.avail = true; o.g.visible = true; o.lab.visible = true; clearHeld(); }
+function dropInTank() {
+  if (held === null) return false;
+  const tankW = new THREE.Vector3(TANK.x, 1, TANK.z);
+  if (camera.position.distanceTo(tankW) > 5.5) { toast("수조에 더 가까이 가 주세요."); return true; }
+  const o = orbs[held], comp = o.comp;
+  o.back = 1.2;
+  clearHeld();
+  const { g, shell } = makeCluster(comp);
+  const x = rnd(-0.5, 0.5);
+  g.position.set(x, 1.75, rnd(-0.15, 0.15)); tankGroup.add(g);
+  falling.push({ g, shell, comp, t: 0, y0: 1.75, y1: 1.0 });
+  return true;
+}
+function dissociate(f) {
+  tankGroup.remove(f.g); f.g.traverse(m => { if (m === f.shell) { m.geometry.dispose(); m.material.dispose(); } });
+  const p = f.g.position.clone();
+  f.comp.parts.forEach((sp, i) => {
+    const o = spawnIon(sp, p.clone().add(new THREE.Vector3((i - (f.comp.parts.length - 1) / 2) * 0.12, 0, 0)));
+    o.v.x = (i - (f.comp.parts.length - 1) / 2) * 0.9 + rnd(-0.1, 0.1);
+  });
+  tank.eq = f.comp.eq;
+  if (f.comp.kind === "acid") tank.msg = `${f.comp.f}가 물속에서 H⁺와 음이온으로 나뉘었습니다. H⁺를 내놓았으니 아레니우스 산입니다.`;
+  else if (f.comp.kind === "base") tank.msg = `${f.comp.f}가 물속에서 양이온과 OH⁻로 나뉘었습니다. OH⁻를 내놓았으니 아레니우스 염기입니다.`;
+  else { tank.eq = "NH₃ → ? (OH⁻ 없음)"; tank.msg = "NH₃는 물에 녹으면 염기성을 띠지만, 스스로 내놓을 OH⁻가 없어 아레니우스 정의로는 설명하기 어렵습니다. 오른쪽 벽의 ‘한계점’과 제2전시관에서 답을 찾아보세요."; }
+  while (ions.length > 36) { const sp = ions.find(o => o.sp !== "H⁺" && o.sp !== "OH⁻") || ions[0]; removeIon(sp); }
+  refreshBoard();
+}
+function resetTank() { [...ions].forEach(removeIon); tank.merging = null; tank.eq = "수조를 비웠습니다"; tank.msg = "새 반응물을 넣어 보세요. 산과 염기를 함께 넣으면 중화 반응이 일어납니다."; refreshBoard(); }
+const BOUND = { x: 0.96, y0: 0.72, y1: 1.3, z: 0.42 };
+function updateTank(dt) {
+  falling.slice().forEach(f => {
+    f.t += dt / 0.7; const u = Math.min(1, f.t);
+    f.g.position.y = f.y0 + (f.y1 - f.y0) * (u * u); f.g.rotation.y += dt * 2;
+    if (u >= 1) { falling.splice(falling.indexOf(f), 1); dissociate(f); }
+  });
+  ions.forEach(o => {
+    o.age += dt;
+    if (tank.merging && (o === tank.merging[0] || o === tank.merging[1])) return;
+    o.v.x += rnd(-0.3, 0.3) * dt; o.v.y += rnd(-0.3, 0.3) * dt; o.v.z += rnd(-0.3, 0.3) * dt;
+    o.v.multiplyScalar(1 - dt * 0.5);
+    const sp = o.v.length(); if (sp < 0.08) o.v.multiplyScalar(0.08 / (sp || 1)); if (sp > 0.9) o.v.multiplyScalar(0.9 / sp);
+    o.g.position.addScaledVector(o.v, dt);
+    const p = o.g.position;
+    if (Math.abs(p.x) > BOUND.x) { p.x = Math.sign(p.x) * BOUND.x; o.v.x *= -1; }
+    if (p.y < BOUND.y0 || p.y > BOUND.y1) { p.y = clamp(p.y, BOUND.y0, BOUND.y1); o.v.y *= -1; }
+    if (Math.abs(p.z) > BOUND.z) { p.z = Math.sign(p.z) * BOUND.z; o.v.z *= -1; }
+  });
+  // neutralization
+  if (!tank.merging) {
+    const h = ions.find(o => o.sp === "H⁺" && o.age > 0.9), oh = ions.find(o => o.sp === "OH⁻" && o.age > 0.9);
+    if (h && oh) tank.merging = [h, oh];
+  } else {
+    const [a, b] = tank.merging;
+    if (!ions.includes(a) || !ions.includes(b)) tank.merging = null;
+    else {
+      const mid = a.g.position.clone().add(b.g.position).multiplyScalar(0.5);
+      [a, b].forEach(o => { const d = mid.clone().sub(o.g.position); const l = d.length(); if (l > 0.001) o.g.position.addScaledVector(d, Math.min(1, dt * 0.7 / l)); });
+      if (a.g.position.distanceTo(b.g.position) < 0.06) {
+        removeIon(a); removeIon(b); tank.merging = null;
+        spawnIon("H₂O", mid);
+        tank.eq = "H⁺ + OH⁻ → H₂O";
+        tank.msg = "중화 반응! 산의 H⁺와 염기의 OH⁻가 만나 물이 되었습니다. 남은 이온은 그대로 물속을 떠다닙니다.";
+        refreshBoard();
+      }
+    }
+  }
+  // tint water by excess ion
+  const n = counts(), diff = (n["H⁺"] || 0) - (n["OH⁻"] || 0);
+  const target = new THREE.Color(diff > 0 ? "#ff8f80" : diff < 0 ? "#7fa9ff" : "#bfe3ff");
+  waterMat.color.lerp(target, Math.min(1, dt * 2));
+  orbs.forEach((o, i) => {
+    if (o.avail || i === held || o.back <= 0) return;
+    o.back -= dt;
+    if (o.back <= 0) { o.avail = true; o.g.visible = true; o.lab.visible = true; }
+  });
+}
+
+/* ================= Hall 2: role pads ================= */
+const PADS = [{ role: "acid", x: -2.4, z: -21.4, color: "#ef6b5b", label: "산 자리" }, { role: "base", x: 2.4, z: -21.4, color: "#58a6ec", label: "염기 자리" }];
+let padOn = null;
+function floorText(text, color) {
+  return canvasTex(512, 160, (c, w, h) => { c.fillStyle = color; c.font = `700 84px ${FONT}`; c.textAlign = "center"; c.fillText(text, w / 2, 110); });
+}
+function buildHall2() {
+  PADS.forEach(p => {
+    const mat = new THREE.MeshStandardMaterial({ color: p.color, emissive: new THREE.Color(p.color), emissiveIntensity: 0.25, roughness: 0.4 });
+    const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.8, 0.06, 48), mat); pad.position.set(p.x, 0.03, p.z); scene.add(pad);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 0.92, 48), new THREE.MeshBasicMaterial({ color: p.color, transparent: true, opacity: 0.6 }));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, 0.01, p.z); scene.add(ring);
+    const t = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.5), new THREE.MeshBasicMaterial({ map: floorText(p.label, p.color), transparent: true, depthWrite: false }));
+    t.rotation.x = -Math.PI / 2; t.position.set(p.x, 0.012, p.z + 1.25); scene.add(t);
+    const l = makeLabel(p.role === "acid" ? "양성자 주개" : "양성자 받개", p.color, 0.16); l.position.set(p.x, 2.4, p.z); scene.add(l);
+    p.mat = mat;
+  });
+  // props: proton crate & basket
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.5), new THREE.MeshStandardMaterial({ color: "#8a6a48", roughness: 0.9 }));
+  crate.position.set(-3.9, 0.175, -21.4); scene.add(crate);
+  const ballMat = new THREE.MeshStandardMaterial({ color: "#ff6b6b", emissive: new THREE.Color("#ff6b6b"), emissiveIntensity: 0.3 });
+  for (let i = 0; i < 6; i++) { const b = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), ballMat); b.position.set(-3.9 + rnd(-0.15, 0.15), 0.4 + rnd(0, 0.05), -21.4 + rnd(-0.15, 0.15)); scene.add(b); }
+  const ch = makeLabel("H⁺ 양성자 공", "#ff6b6b", 0.11); ch.position.set(-3.9, 0.8, -21.4); scene.add(ch);
+  const basket = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.22, 0.28, 24, 1, true), new THREE.MeshStandardMaterial({ color: "#c9a46b", roughness: 0.9, side: THREE.DoubleSide }));
+  basket.position.set(3.9, 0.14, -21.4); scene.add(basket);
+  const bl = makeLabel("머리 위 바구니", "#58a6ec", 0.11); bl.position.set(3.9, 0.6, -21.4); scene.add(bl);
+}
+function updatePads(t) {
+  let on = null;
+  if (hallAt(pos.z) === 1) PADS.forEach(p => { if (Math.hypot(pos.x - p.x, pos.z - p.z) < 0.8) on = p.role; });
+  PADS.forEach(p => { p.mat.emissiveIntensity = p.role === on ? 0.7 + Math.sin(t * 5) * 0.2 : 0.25; });
+  if (on !== padOn) {
+    padOn = on;
+    const card = $("roleCard");
+    if (on) {
+      const acid = on === "acid";
+      card.style.borderColor = acid ? "var(--acid)" : "var(--base)";
+      $("roleTitle").textContent = acid ? "당신은 산입니다" : "당신은 염기입니다";
+      $("roleTitle").style.color = acid ? "var(--acid)" : "var(--base)";
+      $("roleText").textContent = acid ? "양성자(H⁺)를 내주는 양성자 주개입니다. 게임에서는 양성자 공을 상대의 바구니에 던집니다. 실제 전시에서는 두 사람이 각각 발판에 올라서야 시작되며, 지금은 컴퓨터가 염기를 맡습니다." : "양성자(H⁺)를 받는 양성자 받개입니다. 게임에서는 머리 위 바구니로 날아오는 양성자를 받습니다. 실제 전시에서는 두 사람이 각각 발판에 올라서야 시작되며, 지금은 컴퓨터가 산을 맡습니다.";
+      card.hidden = false;
+    } else card.hidden = true;
+  }
+}
+
+/* ================= Hall 3: Lewis demo ================= */
+let lewis = null;
+function buildHall3() {
+  const g = new THREE.Group(); g.position.set(3.2, 0, -36.5); scene.add(g);
+  const ped = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.0, 0.8), new THREE.MeshStandardMaterial({ color: "#d9dde4", roughness: 0.7 })); ped.position.y = 0.5; g.add(ped);
+  boxes.push({ x0: 3.2 - 0.9, x1: 3.2 + 0.9, z0: -36.9, z1: -36.1 });
+  const mk = (c, r) => new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16), new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.25, clearcoat: 0.8 }));
+  const nh3 = new THREE.Group(), bf3 = new THREE.Group();
+  nh3.add(mk("#4170e0", 0.1)); [0, 1, 2].forEach(i => { const a = i / 3 * Math.PI * 2; const h = mk("#f2f2f2", 0.06); h.position.set(-0.08, Math.cos(a) * 0.12, Math.sin(a) * 0.12); nh3.add(h); });
+  bf3.add(mk("#f0a6c8", 0.09)); [0, 1, 2].forEach(i => { const a = i / 3 * Math.PI * 2; const f = mk("#7fd36a", 0.075); f.position.set(0.05, Math.cos(a) * 0.15, Math.sin(a) * 0.15); bf3.add(f); });
+  const pairMat = new THREE.MeshBasicMaterial({ color: "#ffd84a" });
+  const pair = new THREE.Group(); [-0.03, 0.03].forEach(y => { const e = new THREE.Mesh(new THREE.SphereGeometry(0.022, 12, 8), pairMat); e.position.y = y; pair.add(e); });
+  const bond = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1, 10), new THREE.MeshBasicMaterial({ color: "#ffd84a", transparent: true, opacity: 0 }));
+  bond.rotation.z = Math.PI / 2;
+  [nh3, bf3, pair, bond].forEach(o => { o.position.y = 1.45; g.add(o); });
+  const l1 = makeLabel("NH₃ · 전자쌍 주개 (염기)", "#58a6ec", 0.1); l1.position.set(-0.55, 1.85, 0); g.add(l1);
+  const l2 = makeLabel("BF₃ · 전자쌍 받개 (산)", "#ef6b5b", 0.1); l2.position.set(0.55, 1.85, 0); g.add(l2);
+  const l3 = makeLabel("NH₃ + BF₃ → H₃N–BF₃", "#b48cf0", 0.15); l3.position.set(0, 2.2, 0); g.add(l3);
+  ped.userData = { kind: "lewis" }; fixedPicks.push(ped);
+  [nh3, bf3].forEach(o => o.traverse(m => { if (m.isMesh) { m.userData = { kind: "lewis" }; fixedPicks.push(m); } }));
+  lewis = { nh3, bf3, pair, bond };
+}
+function updateLewis(t) {
+  if (!lewis) return;
+  const c = (t % 6) / 6;
+  const gap = c < 0.35 ? 0.75 - (c / 0.35) * 0.45 : c < 0.85 ? 0.3 : 0.3 + (c - 0.85) / 0.15 * 0.45;
+  lewis.nh3.position.x = -gap / 2; lewis.bf3.position.x = gap / 2;
+  const pp = c < 0.35 ? 0 : c < 0.55 ? (c - 0.35) / 0.2 : c < 0.85 ? 1 : 1 - (c - 0.85) / 0.15;
+  const nx = -gap / 2 + 0.13, mid = 0;
+  lewis.pair.position.x = nx + (mid - nx) * pp;
+  lewis.bond.material.opacity = c > 0.5 && c < 0.85 ? 0.9 : 0;
+  lewis.bond.scale.y = gap;
+}
+
+/* ================= Final room ================= */
+const SPECIES_ORDER = ["HCl", "HBr", "NaOH", "KOH", "NH₃", "BF₃", "H₂O", "H⁺", "OH⁻", "Cl⁻", "Br⁻", "Na⁺", "K⁺", "H₃O⁺", "NH₄⁺", "H₃N–BF₃", "+", "→", "⇆"];
+const TARGETS = [
+  { cats: ["arr"], L: ["HCl"], A: "→", R: ["H⁺", "Cl⁻"] },
+  { cats: ["arr"], L: ["HBr"], A: "→", R: ["H⁺", "Br⁻"] },
+  { cats: ["arr"], L: ["NaOH"], A: "→", R: ["Na⁺", "OH⁻"] },
+  { cats: ["arr"], L: ["KOH"], A: "→", R: ["K⁺", "OH⁻"] },
+  { cats: ["arr", "lw"], L: ["H⁺", "OH⁻"], A: "→", R: ["H₂O"] },
+  { cats: ["bl"], L: ["HCl", "H₂O"], A: "⇆", R: ["H₃O⁺", "Cl⁻"] },
+  { cats: ["bl"], L: ["HBr", "H₂O"], A: "⇆", R: ["H₃O⁺", "Br⁻"] },
+  { cats: ["bl"], L: ["NH₃", "H₂O"], A: "⇆", R: ["NH₄⁺", "OH⁻"] },
+  { cats: ["bl"], L: ["HCl", "NH₃"], A: "⇆", R: ["NH₄⁺", "Cl⁻"] },
+  { cats: ["bl"], L: ["H₂O", "H₂O"], A: "⇆", R: ["H₃O⁺", "OH⁻"] },
+  { cats: ["lw"], L: ["NH₃", "BF₃"], A: "→", R: ["H₃N–BF₃"] },
+  { cats: ["lw"], L: ["H⁺", "NH₃"], A: "→", R: ["NH₄⁺"] },
+  { cats: ["lw"], L: ["H⁺", "H₂O"], A: "→", R: ["H₃O⁺"] }
+];
+const CATS = {
+  arr: { name: "아레니우스 반응을 만드세요", help: "물에 녹아 H⁺나 OH⁻를 내놓는 반응, 또는 H⁺와 OH⁻가 만나 물이 되는 중화 반응입니다. 화살표는 →", color: "#ef6b5b" },
+  bl: { name: "브뢴스테드-로우리 반응을 만드세요", help: "한 물질이 다른 물질에 양성자(H⁺)를 건네는 반응입니다. 가역 화살표 ⇆를 쓰세요.", color: "#58a6ec" },
+  lw: { name: "루이스 반응을 만드세요", help: "한쪽이 비공유 전자쌍을 내주고 다른 쪽이 받아 결합하는 반응입니다. 화살표는 →", color: "#b48cf0" }
+};
+const eqStr = t => t.L.join(" + ") + ` ${t.A} ` + t.R.join(" + ");
+function tokensOf(t) { const a = []; t.L.forEach((s, i) => { if (i) a.push("+"); a.push(s); }); a.push(t.A); t.R.forEach((s, i) => { if (i) a.push("+"); a.push(s); }); return a; }
+const isOp = s => s === "→" || s === "⇆";
+
+const game = { state: "idle", time: 60, inv: {}, tokens: [], round: 0, score: 0, lives: 3, cat: "arr", seq: [], rt: 0, rmax: 40, done: [], introShown: false, lock: false };
+const tokTex = {};
+function tokenMat(sp) {
+  if (tokTex[sp]) return tokTex[sp];
+  const op = isOp(sp), plus = sp === "+";
+  const tex = canvasTex(256, 256, (c, w, h) => {
+    c.fillStyle = op ? "#f2b544" : plus ? "#c9ced8" : "#eef0f4"; roundRect(c, 14, 14, w - 28, h - 28, 34); c.fill();
+    c.strokeStyle = "#0f1117"; c.lineWidth = 6; roundRect(c, 14, 14, w - 28, h - 28, 34); c.stroke();
+    c.fillStyle = "#0f1117"; c.textAlign = "center"; c.textBaseline = "middle";
+    let fs = 120; c.font = `700 ${fs}px ${FONT}`; while (c.measureText(sp).width > 200 && fs > 30) { fs -= 6; c.font = `700 ${fs}px ${FONT}`; }
+    c.fillText(sp, w / 2, h / 2 + 6);
+  });
+  return (tokTex[sp] = new THREE.SpriteMaterial({ map: tex }));
+}
+let podium;
+function buildFinal() {
+  podium = new THREE.Group(); podium.position.set(0, 0, -45.3); scene.add(podium);
+  const col = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 1.0, 32), new THREE.MeshStandardMaterial({ color: "#20242e", metalness: 0.3, roughness: 0.5 })); col.position.y = 0.5; podium.add(col);
+  const topM = new THREE.Mesh(new THREE.CylinderGeometry(0.46, 0.46, 0.06, 32), new THREE.MeshStandardMaterial({ color: "#f2b544", emissive: new THREE.Color("#f2b544"), emissiveIntensity: 0.6 })); topM.position.y = 1.03; podium.add(topM);
+  const l = makeLabel("게임 시작대 · 클릭", "#f2b544", 0.16); l.position.y = 1.5; podium.add(l);
+  col.userData = topM.userData = { kind: "podium" }; fixedPicks.push(col, topM);
+  boxes.push({ x0: -0.45, x1: 0.45, z0: -45.75, z1: -44.85 });
+}
+function spawnTokens() {
+  game.tokens.forEach(t => scene.remove(t.s)); game.tokens = [];
+  const pool = [];
+  ["arr", "bl", "lw"].forEach(cat => { const ts = TARGETS.filter(t => t.cats[0] === cat).sort(() => Math.random() - 0.5).slice(0, 3); ts.forEach(t => pool.push(...tokensOf(t))); });
+  const extras = SPECIES_ORDER.filter(s => !isOp(s) && s !== "+");
+  for (let i = 0; i < 8; i++) pool.push(extras[Math.floor(Math.random() * extras.length)]);
+  pool.push("+", "+", "+", "→", "⇆");
+  pool.forEach(sp => {
+    let x, z, ok = false, tries = 0;
+    while (!ok && tries++ < 40) { x = rnd(-6, 6); z = rnd(-55.2, -43); ok = Math.hypot(x, z + 45.3) > 1.4 && Math.hypot(x, z + 42.6) > 1.4 && game.tokens.every(t => Math.hypot(t.x - x, t.z - z) > 0.7); }
+    const s = new THREE.Sprite(tokenMat(sp)); s.scale.set(0.5, 0.5, 1); s.position.set(x, 1.1, z); s.userData = { kind: "token" };
+    scene.add(s);
+    const tok = { sp, s, x, z, ph: Math.random() * 6, taken: false }; s.userData.tok = tok;
+    game.tokens.push(tok);
+  });
+}
+function collect(tok) {
+  if (tok.taken || game.state !== "collect") return;
+  tok.taken = true; scene.remove(tok.s);
+  game.inv[tok.sp] = (game.inv[tok.sp] || 0) + 1;
+  $("ghCount").textContent = Object.values(game.inv).reduce((a, b) => a + b, 0);
+}
+function openGameIntro() { if (game.state === "collect" || game.state === "build") return; showModal("gIntro"); }
+function startCollect() {
+  hideModal("gIntro");
+  game.state = "collect"; game.time = 60; game.inv = {}; game.round = 0; game.score = 0; game.lives = 3; game.done = [];
+  spawnTokens(); $("ghCount").textContent = "0"; $("gameHud").hidden = false;
+  if (hallAt(pos.z) !== 3) { pos.set(0, 1.6, -43); yaw = 0; }
+  toast("수집 시작! 떠 있는 구성 요소에 다가가세요.");
+}
+function updateFinal(dt, t) {
+  if (game.state !== "collect") return;
+  game.time -= dt;
+  $("ghTime").textContent = Math.max(0, Math.ceil(game.time));
+  game.tokens.forEach(tok => {
+    if (tok.taken) return;
+    tok.s.position.y = 1.1 + Math.sin(t * 2 + tok.ph) * 0.08;
+    if (Math.hypot(pos.x - tok.x, pos.z - tok.z) < 0.95) collect(tok);
+  });
+  if (game.time <= 0 || game.tokens.every(t => t.taken)) {
+    game.tokens.forEach(t => scene.remove(t.s));
+    $("gameHud").hidden = true;
+    game.state = "build"; nextRound();
+  }
+}
+function canMake(t, inv) { const need = {}; tokensOf(t).forEach(s => need[s] = (need[s] || 0) + 1); return Object.keys(need).every(s => (inv[s] || 0) >= need[s]); }
+function nextRound() {
+  const avail = Object.keys(CATS).filter(c => TARGETS.some(t => t.cats.includes(c) && canMake(t, game.inv)));
+  if (!avail.length || game.lives <= 0) { endGame(game.lives <= 0 ? "목숨을 모두 잃었습니다" : "남은 구성 요소로 만들 수 있는 반응이 없습니다"); return; }
+  game.round++; game.cat = avail[Math.floor(Math.random() * avail.length)];
+  game.seq = []; game.rmax = Math.max(20, 46 - game.round * 3); game.rt = game.rmax; game.lock = false;
+  const c = CATS[game.cat];
+  $("bPrompt").textContent = c.name; $("bPrompt").style.color = c.color; $("bHelp").textContent = c.help;
+  $("bMsg").textContent = ""; $("bMsg").className = "";
+  showModal("builder"); renderBuilder();
+}
+function renderBuilder() {
+  $("bRound").textContent = `${game.round}라운드 · 완성 ${game.score}개`;
+  $("bLives").textContent = "♥".repeat(game.lives) + "♡".repeat(Math.max(0, 3 - game.lives));
+  const used = {}; game.seq.forEach(s => used[s] = (used[s] || 0) + 1);
+  const slots = $("bSlots"); slots.innerHTML = "";
+  if (!game.seq.length) { const e = document.createElement("span"); e.className = "empty"; e.textContent = "아래 구성 요소를 눌러 반응식을 만드세요. 넣은 것을 누르면 빠집니다."; slots.append(e); }
+  game.seq.forEach((s, i) => { const b = tokBtn(s); b.onclick = () => { if (game.lock) return; game.seq.splice(i, 1); renderBuilder(); }; slots.append(b); });
+  const inv = $("bInv"); inv.innerHTML = "";
+  SPECIES_ORDER.filter(s => game.inv[s]).forEach(s => {
+    const left = game.inv[s] - (used[s] || 0);
+    const b = tokBtn(s, left); b.disabled = left <= 0;
+    b.onclick = () => { if (game.lock || left <= 0) return; game.seq.push(s); renderBuilder(); };
+    inv.append(b);
+  });
+}
+function tokBtn(s, count) {
+  const b = document.createElement("button"); b.className = "tok" + (isOp(s) ? " op" : s === "+" ? " plus" : "");
+  b.textContent = s;
+  if (count != null) { const sm = document.createElement("small"); sm.textContent = "×" + count; b.append(sm); }
+  return b;
+}
+function parseSeq(seq) {
+  const ai = seq.findIndex(isOp); if (ai < 0 || seq.filter(isOp).length !== 1) return null;
+  const side = arr => { if (!arr.length || arr.length % 2 === 0) return null; const out = []; for (let i = 0; i < arr.length; i++) { if (i % 2) { if (arr[i] !== "+") return null; } else { if (arr[i] === "+") return null; out.push(arr[i]); } } return out; };
+  const L = side(seq.slice(0, ai)), R = side(seq.slice(ai + 1));
+  return L && R ? { L, A: seq[ai], R } : null;
+}
+const same = (a, b) => a.length === b.length && [...a].sort().join("|") === [...b].sort().join("|");
+function submit() {
+  if (game.lock) return;
+  const p = parseSeq(game.seq), msg = $("bMsg");
+  const fail = text => { msg.textContent = text; msg.className = "bad"; const c = $("bCard"); c.classList.remove("shake"); void c.offsetWidth; c.classList.add("shake"); };
+  if (!p) { fail("반응식 모양을 확인하세요: 물질 + 물질 → 물질 + 물질 처럼, 화살표 하나와 + 기호로 이어 주세요."); return; }
+  const hit = TARGETS.find(t => same(t.L, p.L) && same(t.R, p.R) && t.A === p.A);
+  const hitOtherArrow = TARGETS.find(t => same(t.L, p.L) && same(t.R, p.R));
+  if (!hit) { fail(hitOtherArrow ? "물질은 맞았어요. 화살표 종류를 다시 보세요." : "전시관에서 본 반응이 아니에요. 다시 조합해 보세요."); return; }
+  if (!hit.cats.includes(game.cat)) { fail("올바른 반응식이지만, 이번 문제의 정의와는 다른 반응이에요."); return; }
+  game.seq.forEach(s => game.inv[s]--);
+  game.score++; game.done.push(eqStr(hit)); game.lock = true;
+  msg.textContent = "정답! " + eqStr(hit); msg.className = "good";
+  setTimeout(() => { if (game.state === "build") nextRound(); }, 1300);
+}
+function loseLife(reason) {
+  if (game.lock) return;
+  game.lives--; game.lock = true;
+  const m = $("bMsg"); m.textContent = reason; m.className = "bad"; renderBuilder();
+  setTimeout(() => { if (game.state === "build") nextRound(); }, 1400);
+}
+function hint() {
+  const t = TARGETS.find(t => t.cats.includes(game.cat) && canMake(t, game.inv)); if (!t) return;
+  const toks = tokensOf(t).map((s, i) => (s === "+" || isOp(s) || i === 0) ? s : "□");
+  $("bMsg").textContent = "힌트: " + toks.join(" "); $("bMsg").className = "";
+}
+function updateBuilder(dt) {
+  if (game.state !== "build" || game.lock || $("builder").hidden) return;
+  game.rt -= dt;
+  const s = Math.max(0, Math.ceil(game.rt));
+  $("bTime").textContent = `0:${String(s).padStart(2, "0")}`;
+  $("bBar").style.width = (Math.max(0, game.rt) / game.rmax * 100) + "%";
+  if (game.rt <= 0) loseLife("시간이 다 됐어요. 목숨이 하나 줄었습니다.");
+}
+function endGame(reason) {
+  game.state = "over"; hideModal("builder");
+  $("eTitle").textContent = "박물관 관람이 끝났습니다";
+  $("eText").textContent = `${reason}. 완성한 반응식은 ${game.score}개입니다.`;
+  const ul = $("eList"); ul.innerHTML = "";
+  game.done.forEach(e => { const li = document.createElement("li"); li.textContent = e; ul.append(li); });
+  showModal("ending");
+}
+$("gGo").onclick = startCollect;
+$("gLater").onclick = () => hideModal("gIntro");
+$("bSubmit").onclick = submit;
+$("bClear").onclick = () => { if (!game.lock) { game.seq = []; renderBuilder(); } };
+$("bHint").onclick = hint;
+$("bGive").onclick = () => loseLife("포기했습니다. 목숨이 하나 줄었습니다.");
+$("eRetry").onclick = () => { hideModal("ending"); game.state = "idle"; openGameIntro(); };
+$("eHome").onclick = () => { hideModal("ending"); game.state = "idle"; pos.set(0, 1.6, -1.5); yaw = 0; pitch = -0.02; walkPath = []; };
+
+/* ================= Hall 2 mini game ================= */
+const mgc = $("mgCanvas"), mx = mgc.getContext("2d");
+const MG = { run: false };
+const GY = 400, BASKET_Y = 252, GRAV = 620;
+function mgOpen(role) { MG.role0 = role; MG.run = false; $("mgRules").hidden = false; $("mgStart").textContent = "시작"; $("mgStatus").textContent = role === "acid" ? "당신은 산(HCl)으로 시작합니다." : "당신은 염기(H₂O)로 시작합니다."; showModal("mg"); mgReset(); mgDraw(); }
+function mgReset() { Object.assign(MG, { role: MG.role0, phase: "fwd", t: 45, score: 0, thrown: 0, balls: [], bx: 640, bdir: 1, px: 160, ptx: 160, charge: null, botNext: 1.2, reverseIn: rnd(6, 11), banner: 0, pop: null, keys: {} }); }
+function mgStartRun() { mgReset(); MG.run = true; $("mgRules").hidden = true; $("mgStart").textContent = "다시 시작"; $("mgStatus").textContent = "진행 중…"; MG.last = performance.now(); requestAnimationFrame(mgLoop); }
+function names() { const fwd = MG.phase === "fwd"; return { acid: fwd ? "HCl" : "H₃O⁺", base: fwd ? "H₂O" : "Cl⁻" }; }
+function mgThrow(fromPlayer, power) {
+  if (fromPlayer) MG.balls.push({ x: 190, y: 315, vx: 200 + power * 300, vy: -430, to: "bot" });
+  else MG.balls.push({ x: 610, y: 315, vx: -rnd(200, 330), vy: -430, to: "player" });
+  MG.thrown++;
+}
+function mgLoop(now) {
+  if (!MG.run) return;
+  const dt = Math.min(0.05, (now - MG.last) / 1000); MG.last = now;
+  if (MG.banner > 0) {
+    MG.banner -= dt;
+    if (MG.banner <= 0) { MG.role = MG.role === "acid" ? "base" : "acid"; MG.phase = MG.phase === "fwd" ? "rev" : "fwd"; MG.reverseIn = rnd(6, 12); MG.botNext = 1.0; }
+  } else {
+    MG.t -= dt; MG.reverseIn -= dt;
+    if (MG.reverseIn <= 0 && MG.t > 3) { MG.banner = 1.6; MG.balls = []; MG.charge = null; }
+    if (MG.charge !== null) MG.charge = Math.min(1, MG.charge + dt * 0.9);
+    if (MG.role === "acid") {
+      MG.bx += MG.bdir * 80 * dt; if (MG.bx > 735 || MG.bx < 545 || Math.random() < dt * 0.5) MG.bdir *= -1; MG.bx = clamp(MG.bx, 545, 735);
+      MG.px = 160;
+    } else {
+      if (MG.keys.left) MG.ptx -= 340 * dt; if (MG.keys.right) MG.ptx += 340 * dt;
+      MG.ptx = clamp(MG.ptx, 70, 340); MG.px += (MG.ptx - MG.px) * Math.min(1, dt * 12);
+      MG.bx = 640; MG.botNext -= dt; if (MG.botNext <= 0) { mgThrow(false); MG.botNext = rnd(1.4, 2.2); }
+    }
+    MG.balls.slice().forEach(b => {
+      const py = b.y; b.vy += GRAV * dt; b.x += b.vx * dt; b.y += b.vy * dt;
+      const rx = b.to === "bot" ? MG.bx : MG.px;
+      if (b.vy > 0 && py < BASKET_Y && b.y >= BASKET_Y && Math.abs(b.x - rx) < 38) { MG.score++; MG.balls.splice(MG.balls.indexOf(b), 1); MG.pop = { text: "양성자 전달 성공!", x: rx, t: 1, good: true }; }
+      else if (b.y > GY - 8) { MG.balls.splice(MG.balls.indexOf(b), 1); MG.pop = { text: "놓쳤어요", x: b.x, t: 1, good: false }; }
+    });
+    if (MG.pop) { MG.pop.t -= dt; if (MG.pop.t <= 0) MG.pop = null; }
+    if (MG.t <= 0) { MG.run = false; mgDraw(); $("mgStatus").textContent = `끝! 양성자 ${MG.thrown}개 중 ${MG.score}개가 바구니에 들어갔습니다.`; return; }
+  }
+  mgDraw(); requestAnimationFrame(mgLoop);
+}
+function person(x, label, color, basket, me) {
+  mx.fillStyle = color; roundRect(mx, x - 24, 300, 48, 100, 14); mx.fill();
+  mx.beginPath(); mx.arc(x, 280, 20, 0, Math.PI * 2); mx.fillStyle = "#f1d3b8"; mx.fill();
+  if (basket) {
+    mx.fillStyle = "#c9a46b"; mx.beginPath(); mx.moveTo(x - 38, BASKET_Y); mx.lineTo(x + 38, BASKET_Y); mx.lineTo(x + 26, 262); mx.lineTo(x - 26, 262); mx.closePath(); mx.fill();
+    mx.strokeStyle = "#8a6a48"; mx.lineWidth = 3; mx.stroke();
+  }
+  mx.textAlign = "center"; mx.fillStyle = "#eef0f4"; mx.font = `600 17px ${FONT}`; mx.fillText(label, x, 428);
+  if (me) { mx.fillStyle = "#f2b544"; mx.font = `600 13px ${MONO}`; mx.fillText("나", x, 236); }
+}
+function mgDraw() {
+  const w = 800, h = 450; mx.clearRect(0, 0, w, h);
+  mx.fillStyle = "#141925"; mx.fillRect(0, 0, w, h);
+  mx.fillStyle = "#232a3a"; mx.fillRect(0, GY, w, h - GY);
+  const n = names(), pAcid = MG.role === "acid";
+  mx.textAlign = "center"; mx.fillStyle = "#eef0f4"; mx.font = `700 26px ${FONT}`;
+  mx.fillText("HCl + H₂O ⇆ H₃O⁺ + Cl⁻", w / 2, 44);
+  mx.font = `600 15px ${MONO}`; mx.fillStyle = MG.phase === "fwd" ? "#ef6b5b" : "#58a6ec";
+  mx.fillText(MG.phase === "fwd" ? "정반응 → : HCl이 H₂O에 양성자를 줍니다" : "역반응 ← : H₃O⁺이 Cl⁻에 양성자를 돌려줍니다", w / 2, 72);
+  mx.textAlign = "left"; mx.fillStyle = "#9aa2b3"; mx.font = `500 15px ${MONO}`; mx.fillText(`성공 ${MG.score} / 던짐 ${MG.thrown}`, 20, 110);
+  mx.textAlign = "right"; mx.fillText(`남은 시간 ${Math.max(0, Math.ceil(MG.t))}초`, w - 20, 110);
+  person(MG.px, `${pAcid ? n.acid : n.base} · ${pAcid ? "산" : "염기"}`, pAcid ? "#ef6b5b" : "#58a6ec", !pAcid, true);
+  person(MG.bx, `${pAcid ? n.base : n.acid} · ${pAcid ? "염기" : "산"}`, pAcid ? "#58a6ec" : "#ef6b5b", pAcid, false);
+  MG.balls.forEach(b => { mx.beginPath(); mx.arc(b.x, b.y, 11, 0, Math.PI * 2); mx.fillStyle = "#ff6b6b"; mx.fill(); mx.fillStyle = "#fff"; mx.font = `700 11px ${FONT}`; mx.textAlign = "center"; mx.fillText("H⁺", b.x, b.y + 4); });
+  if (pAcid && MG.charge !== null) { mx.fillStyle = "#2a3142"; mx.fillRect(MG.px - 40, 200, 80, 10); mx.fillStyle = "#f2b544"; mx.fillRect(MG.px - 40, 200, 80 * MG.charge, 10); }
+  mx.textAlign = "center"; mx.font = `500 15px ${FONT}`; mx.fillStyle = "#9aa2b3";
+  if (MG.run && MG.banner <= 0) mx.fillText(pAcid ? "누르고 있다가 떼서 양성자를 던지세요" : "바구니를 움직여 양성자를 받으세요", w / 2, 160);
+  if (MG.pop) { mx.fillStyle = MG.pop.good ? "#5fd39a" : "#e2735d"; mx.font = `700 18px ${FONT}`; mx.fillText(MG.pop.text, clamp(MG.pop.x, 90, 710), 200 - (1 - MG.pop.t) * 30); }
+  if (MG.banner > 0) {
+    mx.fillStyle = "rgba(15,17,23,0.82)"; mx.fillRect(0, 150, w, 130);
+    mx.fillStyle = "#f2b544"; mx.font = `700 52px ${FONT}`; mx.fillText("역반응입니다!", w / 2, 220);
+    mx.fillStyle = "#eef0f4"; mx.font = `500 18px ${FONT}`; mx.fillText("역할이 바뀝니다. 받은 쪽은 짝산, 내준 쪽은 짝염기가 됩니다.", w / 2, 258);
+  }
+  if (!MG.run && MG.t <= 0) { mx.fillStyle = "rgba(15,17,23,0.85)"; mx.fillRect(0, 150, w, 120); mx.fillStyle = "#eef0f4"; mx.font = `700 40px ${FONT}`; mx.fillText(`성공한 양성자 전달 ${MG.score}개`, w / 2, 222); }
+}
+function mgXY(e) { const r = mgc.getBoundingClientRect(); return (e.clientX - r.left) / r.width * 800; }
+mgc.addEventListener("pointerdown", e => { if (!MG.run || MG.banner > 0) return; if (MG.role === "acid") MG.charge = 0; else MG.ptx = mgXY(e); mgc.setPointerCapture(e.pointerId); });
+mgc.addEventListener("pointermove", e => { if (MG.run && MG.role === "base" && (e.pointerType === "mouse" || e.buttons)) MG.ptx = mgXY(e); });
+mgc.addEventListener("pointerup", () => { if (MG.run && MG.role === "acid" && MG.charge !== null) { mgThrow(true, MG.charge); MG.charge = null; } });
+$("mgStart").onclick = mgStartRun;
+$("mgClose").onclick = () => { MG.run = false; hideModal("mg"); canvas.focus(); };
+$("roleStart").onclick = () => mgOpen(padOn || "acid");
+
+/* ================= Modals / drawer ================= */
+function showModal(id) { $(id).hidden = false; tip.hidden = true; for (const k in keys) keys[k] = false; }
+function hideModal(id) { $(id).hidden = true; }
+const modalOpen = () => ["mg", "gIntro", "builder", "ending"].some(id => !$(id).hidden);
+
+const drawer = $("drawer");
+let drawerKind = null, drawerKey = null;
+function showDrawer(kind) { drawerKind = kind; $("viewPane").hidden = kind !== "view"; $("editPane").hidden = kind !== "edit"; drawer.hidden = false; drawer.scrollTop = 0; requestAnimationFrame(() => drawer.classList.add("open")); }
+function closeDrawer() { drawerKind = null; drawerKey = null; drawer.classList.remove("open"); setTimeout(() => { if (!drawer.classList.contains("open")) drawer.hidden = true; }, reduceMotion ? 0 : 420); }
+$("closeBtn").onclick = () => { closeDrawer(); canvas.focus(); };
+function fillView({ kicker, title, body, ex, examples, actions, color }) {
+  drawer.style.setProperty("--hall", color || "var(--gold)");
+  $("dKicker").textContent = kicker || ""; $("dTitle").textContent = title || "제목 없음"; $("dBody").textContent = body || "";
+  $("dEx").hidden = !ex;
+  const list = $("dExList"); list.innerHTML = "";
+  const exs = String(examples || "").split("\n").map(s => s.trim()).filter(Boolean);
+  if (exs.length) exs.forEach(e => { const d = document.createElement("div"); d.className = "eq"; d.textContent = e; list.append(d); });
+  else { const d = document.createElement("div"); d.className = "empty"; d.textContent = canWrite ? "아직 예시 반응이 없습니다. ‘이 해설판 수정’에서 추가하세요." : "아직 예시 반응이 없습니다."; list.append(d); }
+  const ac = $("dActions"); ac.innerHTML = ""; (actions || []).forEach(a => ac.append(a)); ac.hidden = !(actions && actions.length);
+  showDrawer("view");
+}
+function actionBtn(label, fn, cls) { const b = document.createElement("button"); b.className = "ghost " + (cls || ""); b.textContent = label; b.onclick = fn; return b; }
+function viewPanel(key) {
+  const p = PANELS[key], d = pdata[key]; drawerKey = key;
+  fillView({ kicker: p.kicker, title: d.title, body: d.body, ex: p.ex, examples: d.examples, color: HALLS[p.hall].color, actions: canWrite ? [actionBtn("이 해설판 수정", () => openEditor(key), "accent")] : [] });
+}
+function viewTank() {
+  fillView({ kicker: "제1전시관 · 반응 수조", title: "반응 수조", color: HALLS[0].color,
+    body: "선반에서 반응물 덩어리를 집은 뒤 수조를 클릭하면 덩어리가 물에 들어갑니다.\n\n산은 물속에서 H⁺를, 염기는 OH⁻를 내놓습니다. 수조에 H⁺와 OH⁻가 함께 있으면 둘이 만나 물(H₂O)이 됩니다. 물 색은 남은 이온에 따라 산성(붉은색), 염기성(푸른색)으로 바뀝니다.\n\n지금 반응: " + tank.eq,
+    actions: [actionBtn("수조 비우기", () => { resetTank(); viewTank(); }, "danger")] });
+}
+function viewLewis() {
+  fillView({ kicker: "제3전시관 · 모형", title: "NH₃와 BF₃의 루이스 반응", color: HALLS[2].color,
+    body: "NH₃의 질소(N)에는 결합에 쓰이지 않은 비공유 전자쌍(노란 점 두 개)이 있습니다. BF₃의 붕소(B)는 전자가 모자라 이 전자쌍을 받을 자리가 있습니다.\n\nNH₃가 전자쌍을 내주고 BF₃가 받아 배위 결합이 생깁니다. 이 반응에는 양성자(H⁺)가 오가지 않으므로 브뢴스테드-로우리 정의로는 설명할 수 없지만, 루이스 정의로는 NH₃가 염기, BF₃가 산입니다." });
+}
+
+/* ================= Editing (db + user) ================= */
+let db = null, canWrite = false, editMode = false;
+const saveTimers = {}, dirty = new Set();
+function setSaveState(t, err) { const s = $("saveState"); if (s) { s.textContent = t; s.classList.toggle("err", !!err); } }
+function scheduleSave(key) {
+  if (!db) return; dirty.add(key); clearTimeout(saveTimers[key]); setSaveState("수정 중…");
+  saveTimers[key] = setTimeout(async () => {
+    try { await db.doc("panels/" + key).set({ title: pdata[key].title, body: pdata[key].body, examples: pdata[key].examples }); setSaveState("저장됨"); }
+    catch (e) { setSaveState(e && e.code === "invalid_argument" ? "저장하지 못했습니다. 편집 권한을 확인해 주세요." : "저장하지 못했습니다. 연결을 확인하고 다시 수정해 주세요.", true); }
+    dirty.delete(key);
+  }, 700);
+}
+const SYMBOLS = ["→", "⇆", "+", "⁺", "⁻", "²⁺", "₂", "₃", "₄", "H⁺", "OH⁻", "H₂O", "H₃O⁺", "NH₃", "NH₄⁺"];
+function openEditor(key) {
+  const p = PANELS[key], d = pdata[key]; drawerKey = key;
+  drawer.style.setProperty("--hall", HALLS[p.hall].color);
+  const pane = $("editPane");
+  pane.innerHTML = `<p class="kicker">해설판 편집 · ${p.kicker}</p><div class="form">
+    <div class="field"><label for="e_title">제목</label><input id="e_title" maxlength="80"></div>
+    <div class="field"><label for="e_body">본문</label><textarea id="e_body" rows="9"></textarea><small>줄바꿈은 그대로 표시됩니다. 빈 줄로 문단을 나누세요.</small></div>
+    ${p.ex ? `<div class="field"><label for="e_ex">예시 반응</label><textarea id="e_ex" rows="4" placeholder="HCl → H⁺ + Cl⁻\nNaOH → Na⁺ + OH⁻"></textarea><small>한 줄에 반응식 하나씩, 벽에는 최대 4줄까지 보입니다.</small></div>` : ""}
+    <div class="field"><label>기호 넣기 · 커서 위치에 들어갑니다</label><div class="symbols" id="e_sym"></div></div>
+    <div class="actions"><button class="ghost" id="e_view">관람 화면으로 보기</button><button class="ghost danger" id="e_reset">기본 문구로 되돌리기</button></div>
+    <span id="saveState">${dirty.has(key) ? "수정 중…" : "저장됨"}</span></div>`;
+  $("e_title").value = d.title; $("e_body").value = d.body; if (p.ex) $("e_ex").value = d.examples;
+  let lastField = $("e_body"), redraw = null;
+  const upd = () => { pdata[key] = { title: $("e_title").value, body: $("e_body").value, examples: p.ex ? $("e_ex").value : "" }; clearTimeout(redraw); redraw = setTimeout(() => refreshPanel(key), 200); scheduleSave(key); };
+  ["e_title", "e_body", "e_ex"].forEach(id => { const el = $(id); if (!el) return; el.addEventListener("input", upd); el.addEventListener("focus", () => lastField = el); });
+  SYMBOLS.forEach(s => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = s;
+    b.onmousedown = e => e.preventDefault();
+    b.onclick = () => { const el = lastField, a = el.selectionStart, z = el.selectionEnd; el.value = el.value.slice(0, a) + s + el.value.slice(z); el.selectionStart = el.selectionEnd = a + s.length; el.focus(); upd(); };
+    $("e_sym").append(b);
+  });
+  $("e_view").onclick = () => viewPanel(key);
+  $("e_reset").onclick = async () => {
+    pdata[key] = { title: p.title, body: p.body, examples: "" }; refreshPanel(key);
+    try { await db.doc("panels/" + key).delete(); } catch (e) { /* ignore */ }
+    openEditor(key);
+  };
+  showDrawer("edit");
+}
+function setEditMode(on) {
+  editMode = on && canWrite;
+  $("editToggle").classList.toggle("on", editMode);
+  $("editLabel").textContent = editMode ? "편집 중 · 끄기" : "편집 모드";
+  if (drawerKind) closeDrawer();
+  if (editMode) toast("편집 모드: 해설판을 클릭하면 정의, 한계점, 예시 반응을 바꿀 수 있습니다.");
+}
+$("editToggle").onclick = () => setEditMode(!editMode);
+async function connect() {
+  const c = window.claude; if (!c || typeof c.use !== "function") return;
+  const [dbNs, userNs] = await Promise.all([c.use("db").catch(() => null), c.use("user").catch(() => null)]);
+  db = dbNs; if (!db) return;
+  if (userNs) canWrite = !!(await userNs.canEdit());
+  if (canWrite) { $("editToggle").hidden = false; $("editorNote").hidden = false; }
+  db.collection("panels").onSnapshot(snap => {
+    const seen = new Set();
+    snap.docs.forEach(doc => {
+      const key = doc.id; if (!PANELS[key] || dirty.has(key)) return; seen.add(key);
+      const m = doc.data() || {}, P = PANELS[key];
+      const next = { title: typeof m.title === "string" && m.title ? m.title.slice(0, 80) : P.title, body: typeof m.body === "string" ? m.body.slice(0, 3000) : P.body, examples: typeof m.examples === "string" ? m.examples.slice(0, 600) : "" };
+      if (JSON.stringify(next) !== JSON.stringify(pdata[key])) { pdata[key] = next; refreshPanel(key); if (drawerKind === "view" && drawerKey === key) viewPanel(key); }
+    });
+    Object.keys(PANELS).forEach(key => {
+      if (seen.has(key) || dirty.has(key)) return;
+      const P = PANELS[key], def = { title: P.title, body: P.body, examples: "" };
+      if (JSON.stringify(def) !== JSON.stringify(pdata[key])) { pdata[key] = def; refreshPanel(key); }
+    });
+  }, () => {});
+}
+
+/* ================= Player & input ================= */
+const pos = new THREE.Vector3(0, 1.6, -1.5);
+let yaw = 0, pitch = -0.02, started = false, walkPath = [], curHall = 0;
+const keys = {};
+const tip = $("tip");
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.hidden = true, 3600); }
+function setNotice(html) { const n = $("notice"); n.innerHTML = html; n.hidden = !html; }
+
+function resolve(p, prev) {
+  p.x = clamp(p.x, -W / 2 + 0.35, W / 2 - 0.35);
+  p.z = clamp(p.z, -N * D + 0.35, -0.35);
+  const half = DOOR / 2 - 0.3;
+  for (let k = 1; k < N; k++) {
+    const zw = -k * D;
+    if (Math.abs(p.z - zw) < 0.4 && Math.abs(p.x) > half) {
+      if (Math.abs(prev.z - zw) < 0.4) p.x = clamp(p.x, -half, half);
+      else p.z = prev.z > zw ? zw + 0.4 : zw - 0.4;
+    }
+  }
+  for (const b of boxes) {
+    const x0 = b.x0 - 0.3, x1 = b.x1 + 0.3, z0 = b.z0 - 0.3, z1 = b.z1 + 0.3;
+    if (p.x > x0 && p.x < x1 && p.z > z0 && p.z < z1) {
+      const m = Math.min(p.x - x0, x1 - p.x, p.z - z0, z1 - p.z);
+      if (m === p.x - x0) p.x = x0; else if (m === x1 - p.x) p.x = x1; else if (m === p.z - z0) p.z = z0; else p.z = z1;
+    }
+  }
+}
+function planWalk(target) {
+  const a = hallAt(pos.z), b = hallAt(target.z), path = [];
+  if (a !== b) {
+    const dir = b > a ? 1 : -1;
+    for (let h = a; h !== b; h += dir) { const zw = -(dir > 0 ? h + 1 : h) * D; path.push(new THREE.Vector3(0, 0, zw + dir * 0.9), new THREE.Vector3(0, 0, zw - dir * 0.9)); }
+  }
+  path.push(target); walkPath = path;
+}
+
+const raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let pickables = [];
+function pick(cx, cy) {
+  const r = canvas.getBoundingClientRect(); ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const tokens = game.state === "collect" ? game.tokens.filter(t => !t.taken).map(t => t.s) : [];
+  const h = raycaster.intersectObjects(fixedPicks.concat(tokens), false);
+  return h.find(x => !(x.object.userData.kind === "orb" && !orbs[x.object.userData.i].avail)) || null;
+}
+let drag = null;
+canvas.addEventListener("pointerdown", e => { if (!started) return; drag = { x: e.clientX, y: e.clientY, t: performance.now(), moved: 0 }; canvas.setPointerCapture(e.pointerId); canvas.classList.add("dragging"); tip.hidden = true; });
+canvas.addEventListener("pointermove", e => {
+  if (!started) return;
+  if (drag) {
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
+    if (drag.moved < 5) return;
+    const k = e.pointerType === "touch" ? 0.006 : 0.0038; yaw += dx * k; pitch = clamp(pitch + dy * k, -1.2, 1.2); return;
+  }
+  if (e.pointerType !== "mouse") return;
+  const h = pick(e.clientX, e.clientY), ud = h && h.object.userData;
+  let label = null;
+  if (ud) {
+    if (ud.kind === "panel") label = [PANELS[ud.key].kicker, pdata[ud.key].title];
+    else if (ud.kind === "orb") label = ["반응물 · 클릭해서 집기", orbs[ud.i].comp.f];
+    else if (ud.kind === "tank") label = ["반응 수조", held !== null ? "클릭해서 넣기" : "자세히 보기"];
+    else if (ud.kind === "tankReset") label = ["반응 수조", "수조 비우기"];
+    else if (ud.kind === "podium") label = ["종합 게임장", "게임 시작대"];
+    else if (ud.kind === "lewis") label = ["제3전시관 · 모형", "NH₃ + BF₃"];
+    else if (ud.kind === "token") label = ["구성 요소", ud.tok.sp];
+  }
+  if (label) { tip.innerHTML = ""; const s = document.createElement("small"); s.textContent = label[0]; tip.append(s, document.createTextNode(label[1])); tip.style.left = e.clientX + "px"; tip.style.top = e.clientY + "px"; tip.hidden = false; }
+  else tip.hidden = true;
+  canvas.classList.toggle("pointing", !!label || !!(ud && ud.kind === "floor"));
+});
+canvas.addEventListener("pointerup", e => {
+  if (!drag) return; const d = drag; drag = null; canvas.classList.remove("dragging");
+  if (d.moved >= 8 || performance.now() - d.t > 650) return;
+  const h = pick(e.clientX, e.clientY); if (!h) return;
+  const ud = h.object.userData;
+  if (ud.kind === "panel") { if (editMode) openEditor(ud.key); else viewPanel(ud.key); return; }
+  if (ud.kind === "orb") { pickOrb(ud.i); return; }
+  if (ud.kind === "table") { if (held !== null) putBack(); return; }
+  if (ud.kind === "tank") { if (!dropInTank()) viewTank(); return; }
+  if (ud.kind === "tankReset") { resetTank(); return; }
+  if (ud.kind === "podium") { openGameIntro(); return; }
+  if (ud.kind === "lewis") { viewLewis(); return; }
+  if (ud.kind === "token") { if (Math.hypot(pos.x - ud.tok.x, pos.z - ud.tok.z) < 4) collect(ud.tok); else { planWalk(new THREE.Vector3(ud.tok.x, 0, ud.tok.z)); } return; }
+  if (ud.kind === "floor") { if (drawerKind) closeDrawer(); planWalk(new THREE.Vector3(h.point.x, 0, h.point.z)); marker.position.set(h.point.x, 0.01, h.point.z); marker.material.opacity = 0.8; }
+});
+canvas.addEventListener("pointercancel", () => { drag = null; canvas.classList.remove("dragging"); });
+canvas.addEventListener("pointerleave", () => { if (!drag) tip.hidden = true; });
+
+window.addEventListener("keydown", e => {
+  if (!$("mg").hidden && MG.run) {
+    if (e.code === "Space") { e.preventDefault(); if (MG.role === "acid" && MG.charge === null && MG.banner <= 0 && !e.repeat) MG.charge = 0; }
+    if (e.key === "ArrowLeft") MG.keys.left = true; if (e.key === "ArrowRight") MG.keys.right = true;
+    return;
+  }
+  if (!started || modalOpen()) return;
+  const tag = e.target && e.target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (e.key === "Escape") { if (drawerKind) closeDrawer(); return; }
+  const k = e.key.toLowerCase();
+  if (k === "e" && held !== null) { dropInTank(); return; }
+  if (k === "q" && held !== null) { putBack(); return; }
+  if (e.key === "Shift") keys.shift = true;
+  if (["w", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(k)) {
+    if (tag === "BUTTON" && k.startsWith("arrow")) return;
+    keys[k] = true; e.preventDefault(); walkPath = [];
+  }
+});
+window.addEventListener("keyup", e => {
+  if (e.code === "Space" && MG.run && MG.role === "acid" && MG.charge !== null) { mgThrow(true, MG.charge); MG.charge = null; }
+  if (e.key === "ArrowLeft") MG.keys && (MG.keys.left = false); if (e.key === "ArrowRight") MG.keys && (MG.keys.right = false);
+  if (e.key === "Shift") keys.shift = false;
+  keys[e.key.toLowerCase()] = false;
+});
+window.addEventListener("blur", () => { for (const k in keys) keys[k] = false; });
+$("enterBtn").onclick = () => { started = true; $("intro").hidden = true; canvas.focus(); toast("제1전시관 · 아레니우스의 산과 염기"); };
+
+/* ================= Minimap ================= */
+const mm = $("minimap"), mctx = mm.getContext("2d");
+function sizeMinimap() { const r = mm.getBoundingClientRect(), d = Math.min(window.devicePixelRatio || 1, 2); mm.width = Math.max(1, Math.round(r.width * d)); mm.height = Math.max(1, Math.round(r.height * d)); }
+function drawMinimap() {
+  const w = mm.width, h = mm.height, pad = 6 * (w / 64), s = Math.min((w - pad * 2) / W, (h - pad * 2) / (N * D));
+  const X = x => w / 2 + x * s, Y = z => h - pad + z * s;
+  mctx.clearRect(0, 0, w, h);
+  for (let i = 0; i < N; i++) {
+    mctx.fillStyle = HALLS[i].color; mctx.globalAlpha = i === curHall ? 0.28 : 0.08;
+    mctx.fillRect(X(-W / 2), Y(-(i + 1) * D), W * s, D * s); mctx.globalAlpha = 1;
+    mctx.fillStyle = HALLS[i].color; mctx.font = `600 ${Math.round(10 * w / 64)}px ${MONO}`; mctx.textAlign = "center";
+    mctx.fillText(i < 3 ? String(i + 1) : "G", X(-W / 2 + 1.8), Y(zc(i)) + 4);
+  }
+  mctx.strokeStyle = "rgba(238,240,244,0.4)"; mctx.lineWidth = 1;
+  mctx.strokeRect(X(-W / 2), Y(-N * D), W * s, N * D * s);
+  for (let k = 1; k < N; k++) { const y = Y(-k * D); mctx.beginPath(); mctx.moveTo(X(-W / 2), y); mctx.lineTo(X(-DOOR / 2), y); mctx.moveTo(X(DOOR / 2), y); mctx.lineTo(X(W / 2), y); mctx.stroke(); }
+  mctx.save(); mctx.translate(X(pos.x), Y(pos.z)); mctx.rotate(-yaw);
+  const a = Math.max(4, s * 0.7);
+  mctx.fillStyle = "#f2b544"; mctx.beginPath(); mctx.moveTo(0, -a * 1.3); mctx.lineTo(a * 0.75, a * 0.8); mctx.lineTo(-a * 0.75, a * 0.8); mctx.closePath(); mctx.fill();
+  mctx.restore();
+}
+
+/* ================= Loop ================= */
+let marker;
+function resize() { const w = window.innerWidth, h = window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); sizeMinimap(); }
+window.addEventListener("resize", resize);
+function enterHall(i) {
+  curHall = i;
+  document.documentElement.style.setProperty("--hall", HALLS[i].color);
+  $("hudHall").textContent = HALLS[i].name; $("hudSub").textContent = HALLS[i].sub;
+  if (started) toast(`${HALLS[i].name} · ${HALLS[i].sub}`);
+  if (i === 3 && game.state === "idle" && !game.introShown && started) { game.introShown = true; setTimeout(openGameIntro, 600); }
+}
+const fwd = new THREE.Vector3(), right = new THREE.Vector3(), mv = new THREE.Vector3(), prev = new THREE.Vector3();
+let last = performance.now(), stuck = 0;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05); last = now; const t = now / 1000;
+  if (started && !modalOpen()) {
+    prev.copy(pos);
+    fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw)); right.set(Math.cos(yaw), 0, -Math.sin(yaw)); mv.set(0, 0, 0);
+    if (keys.w || keys.arrowup) mv.add(fwd); if (keys.s || keys.arrowdown) mv.sub(fwd);
+    if (keys.d) mv.add(right); if (keys.a) mv.sub(right);
+    if (keys.arrowleft) yaw += dt * 1.8; if (keys.arrowright) yaw -= dt * 1.8;
+    const speed = keys.shift || game.state === "collect" ? 4.2 : 2.7;
+    if (mv.lengthSq() > 0) { mv.normalize().multiplyScalar(speed * dt); pos.add(mv); resolve(pos, prev); }
+    else if (walkPath.length) {
+      const tg = walkPath[0], dxz = new THREE.Vector3(tg.x - pos.x, 0, tg.z - pos.z), dist = dxz.length();
+      if (dist < 0.08) walkPath.shift();
+      else {
+        pos.add(dxz.normalize().multiplyScalar(Math.min(dist, speed * dt))); resolve(pos, prev);
+        if (Math.hypot(pos.x - prev.x, pos.z - prev.z) < 0.0005) { if (++stuck > 6) { walkPath.shift(); stuck = 0; } } else stuck = 0;
+      }
+    }
+  }
+  const hh = hallAt(pos.z); if (hh !== curHall) enterHall(hh);
+  camera.position.copy(pos); camera.rotation.set(pitch, yaw, 0);
+  if (heldGroup) { heldGroup.position.y = -0.2 + Math.sin(t * 3) * 0.008; heldGroup.rotation.y += dt; }
+  orbs.forEach((o, i) => { if (o.avail) o.g.position.y = o.home.y + Math.sin(t * 1.8 + i) * 0.02; });
+  updateTank(dt); updatePads(t); updateLewis(t); updateFinal(dt, t); updateBuilder(dt);
+  if (marker && !walkPath.length) marker.material.opacity *= 0.9;
+  renderer.render(scene, camera);
+  drawMinimap();
+  requestAnimationFrame(frame);
+}
+
+/* ================= Boot ================= */
+async function build(data) {
+  try {
+    await Promise.race([Promise.all(['700 60px "IBM Plex Sans KR"', '600 40px "IBM Plex Sans KR"', '400 30px "IBM Plex Sans KR"', '500 28px "IBM Plex Mono"'].map(f => document.fonts.load(f, "산염기HCl₂⁺"))), new Promise(r => setTimeout(r, 2500))]);
+  } catch (e) { /* system fonts */ }
+  buildRooms(); buildPanels(); buildHall1(); buildHall2(); buildHall3(); buildFinal();
+  marker = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.2, 40), new THREE.MeshBasicMaterial({ color: "#f2b544", transparent: true, opacity: 0, depthWrite: false }));
+  marker.rotation.x = -Math.PI / 2; scene.add(marker);
+  if (data && typeof data.x === "number") { pos.set(data.x, 1.6, data.z); yaw = data.yaw || 0; pitch = data.pitch || 0; if (data.started) { started = true; $("intro").hidden = true; } }
+  curHall = -1; enterHall(hallAt(pos.z));
+  resize();
+  requestAnimationFrame(tm => { last = tm; frame(tm); });
+  connect();
+}
+const hot = window.claude && window.claude.hot;
+if (hot && hot.snapshot) hot.snapshot(() => ({ x: pos.x, z: pos.z, yaw, pitch, started }));
+if (hot && hot.ready) hot.ready(build); else build((hot && hot.data) || {});
+})();
+</script>
+
+</body></html>
