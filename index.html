@@ -308,8 +308,6 @@ const PANELS = {
   g_rule: { hall: 3, ex: false, x: -W / 2, z: -45.2, kicker: "종합 게임장 · 게임 방법", title: "반응식 서바이벌",
     body: "1단계 · 수집 60초: 떠 있는 구성 요소에 다가가면 모입니다.\n\n2단계 · 서바이벌: 문제로 나온 정의에 맞는 반응식을 모은 구성 요소로 완성하세요.\n예: HCl → H⁺ + Cl⁻\n\n• 브뢴스테드-로우리 반응은 ⇆를 씁니다.\n• 쓴 구성 요소는 사라집니다.\n• 시간 초과나 포기는 목숨 −1.\n\n가운데 게임 시작대를 클릭해 시작하세요." }
 };
-const pdata = {};
-Object.keys(PANELS).forEach(k => { pdata[k] = { title: PANELS[k].title, body: PANELS[k].body, examples: "" }; });
 // Content edited in the museum's edit mode, baked in for the static site
 const SAVED = {
   a_def: { examples: "2HCl＋Mg(OH)₂ → MgCl₂＋2H₂O" },
@@ -319,7 +317,9 @@ const SAVED = {
   l_def: { examples: "NH₃ + H⁺ → NH₄⁺" },
   l_cmp: { title: "세 종류의 정의 한눈에 보기" }
 };
-Object.keys(SAVED).forEach(k => Object.assign(pdata[k], SAVED[k]));
+Object.keys(SAVED).forEach(k => Object.assign(PANELS[k], SAVED[k]));
+const pdata = {};
+Object.keys(PANELS).forEach(k => { pdata[k] = { title: PANELS[k].title, body: PANELS[k].body, examples: PANELS[k].examples || "" }; });
 
 /* ================= Renderer ================= */
 const canvas = $("scene");
@@ -1103,7 +1103,7 @@ function openEditor(key) {
   });
   $("e_view").onclick = () => viewPanel(key);
   $("e_reset").onclick = async () => {
-    pdata[key] = { title: p.title, body: p.body, examples: "" }; refreshPanel(key);
+    pdata[key] = { title: p.title, body: p.body, examples: p.examples || "" }; refreshPanel(key);
     try { await db.doc("panels/" + key).delete(); } catch (e) { /* ignore */ }
     openEditor(key);
   };
@@ -1133,7 +1133,7 @@ async function connect() {
     });
     Object.keys(PANELS).forEach(key => {
       if (seen.has(key) || dirty.has(key)) return;
-      const P = PANELS[key], def = { title: P.title, body: P.body, examples: "" };
+      const P = PANELS[key], def = { title: P.title, body: P.body, examples: P.examples || "" };
       if (JSON.stringify(def) !== JSON.stringify(pdata[key])) { pdata[key] = def; refreshPanel(key); }
     });
   }, () => {});
