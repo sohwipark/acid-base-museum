@@ -310,6 +310,16 @@ const PANELS = {
 };
 const pdata = {};
 Object.keys(PANELS).forEach(k => { pdata[k] = { title: PANELS[k].title, body: PANELS[k].body, examples: "" }; });
+// Content edited in the museum's edit mode, baked in for the static site
+const SAVED = {
+  a_def: { examples: "2HCl＋Mg(OH)₂ → MgCl₂＋2H₂O" },
+  a_lim: { examples: "NH₃ + H₂O ⇆  NH₄⁺ + OH⁻" },
+  b_def: { examples: "CO₂ + H₂O ⇆ H₂CO₃ ⇆ H⁺ + HCO₃⁻" },
+  b_lim: { examples: "BF₃ + NH₃ → BF₃NH₃" },
+  l_def: { examples: "NH₃ + H⁺ → NH₄⁺" },
+  l_cmp: { title: "세 종류의 정의 한눈에 보기" }
+};
+Object.keys(SAVED).forEach(k => Object.assign(pdata[k], SAVED[k]));
 
 /* ================= Renderer ================= */
 const canvas = $("scene");
